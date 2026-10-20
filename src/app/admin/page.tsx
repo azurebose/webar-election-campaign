@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   saveAssetBlob,
+  getAssetBlob,
   getAssetUrl,
   clearAllCustomAssets,
   saveWardsConfig,
@@ -50,6 +51,7 @@ export default function AdminPage() {
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [compiledBlob, setCompiledBlob] = useState<Blob | null>(null);
 
   // Analytics states
   const [stats, setStats] = useState({
@@ -317,10 +319,11 @@ export default function AdminPage() {
       // Save wards JSON configuration
       await saveWardsConfig(serializableWards);
 
+      setCompiledBlob(mindBlob);
       setCompileProgress(100);
       setStatusMessage(`All ${wards.length} Ward Posters compiled & published successfully!`);
       setSuccessMessage(
-        `Successfully published ${wards.length} Ward Posters! Voters in any ward can now point their phone at their specific ward poster to watch the speech.`
+        `Successfully compiled ${wards.length} Ward Posters! Click "Download targets.mind" and "Download wards.json" below to save them for WhatsApp deployment.`
       );
       setIsCompiling(false);
     } catch (err: any) {
@@ -330,10 +333,95 @@ export default function AdminPage() {
     }
   };
 
+  const handleDownloadTargetsMind = async () => {
+    try {
+      let blob = compiledBlob;
+      if (!blob) {
+        blob = await getAssetBlob('targets.mind');
+      }
+      if (!blob) {
+        setErrorMessage('Please click "Compile & Publish" first to compile the multi-ward targets.');
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'targets.mind';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error(e);
+      setErrorMessage(`Failed to download targets.mind: ${e.message}`);
+    }
+  };
+
+  const handleDownloadWardsJson = () => {
+    try {
+      const exportData = wards.map((w, idx) => ({
+        id: w.id || `ward-${idx + 1}`,
+        wardNumber: w.wardNumber,
+        wardName: w.wardName,
+        candidateName: w.candidateName,
+        markerUrl: w.imageFile ? `/ward_${idx + 1}_poster.png` : (w.markerUrl.startsWith('http') || w.markerUrl.startsWith('/') ? w.markerUrl : `/sample_marker.png`),
+        videoUrl: w.videoUrl.startsWith('blob:') ? '/campaign_speech.mp4' : w.videoUrl
+      }));
+      const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(jsonBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'wards.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error(e);
+      setErrorMessage(`Failed to download wards.json: ${e.message}`);
+    }
+  };
+
+  const handleDownloadWardPoster = async (idx: number) => {
+    const ward = wards[idx];
+    if (!ward) return;
+    try {
+      let blob: Blob | null = ward.imageFile || null;
+      if (!blob && ward.markerUrl) {
+        if (ward.markerUrl.startsWith('blob:')) {
+          const resp = await fetch(ward.markerUrl);
+          blob = await resp.blob();
+        } else {
+          blob = await getAssetBlob(`ward_marker_${ward.id}.png`);
+        }
+      }
+      if (!blob && ward.markerUrl) {
+        const resp = await fetch(ward.markerUrl);
+        blob = await resp.blob();
+      }
+      if (!blob) {
+        setErrorMessage(`No image found for ${ward.wardNumber}`);
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ward_${idx + 1}_poster.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error(e);
+      setErrorMessage(`Failed to download poster for ${ward.wardNumber}: ${e.message}`);
+    }
+  };
+
   const handleResetToDefault = async () => {
     if (confirm('Are you sure you want to revert to the default official election alliance poster?')) {
       await clearAllCustomAssets();
       await loadInitialWards();
+      setCompiledBlob(null);
       setSuccessMessage('Restored to default official election alliance poster (Lotus, Bicycle, Glass Tumbler)!');
       setTimeout(() => setSuccessMessage(null), 4000);
     }
@@ -707,6 +795,62 @@ export default function AdminPage() {
               >
                 Revert to Default Alliance
               </button>
+            </div>
+
+            {/* Cloudflare & WhatsApp Production Deployment Pack Card */}
+            <div className="bg-gradient-to-r from-gray-950 via-slate-900 to-gray-950 border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <h3 className="text-xs sm:text-sm font-extrabold text-white">
+                    Publish to WhatsApp Voters / క్లౌడ్ ప్యాక్ డౌన్‌లోడ్
+                  </h3>
+                </div>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">
+                  {wards.length} WARDS READY
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-300 leading-relaxed">
+                Download these compiled campaign files and place them into your project&apos;s <code className="text-amber-300 font-mono font-bold bg-black/60 px-1 py-0.5 rounded">public/</code> folder, then deploy to Cloudflare so all WhatsApp voters see all {wards.length} wards:
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleDownloadTargetsMind}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-xs shadow-md transition-all flex items-center space-x-1.5 active:scale-95"
+                  title="Download compiled multi-target MindAR binary"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>1. Download targets.mind</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadWardsJson}
+                  className="px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-amber-300 font-extrabold text-xs shadow-md transition-all flex items-center space-x-1.5 active:scale-95"
+                  title="Download wards JSON configuration"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>2. Download wards.json</span>
+                </button>
+              </div>
+              {/* Individual Ward Poster Download Chips */}
+              <div className="pt-2 border-t border-gray-800 flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className="text-gray-400 font-semibold mr-1">Download Posters:</span>
+                {wards.map((ward, idx) => (
+                  <button
+                    key={`dl-poster-${ward.id || idx}`}
+                    type="button"
+                    onClick={() => handleDownloadWardPoster(idx)}
+                    className="px-2 py-1 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 hover:text-white transition-all flex items-center space-x-1"
+                  >
+                    <span>{ward.wardNumber} ⬇</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

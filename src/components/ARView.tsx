@@ -64,12 +64,27 @@ export default function ARView({ onExit }: ARViewProps) {
     async function loadCampaignAssets() {
       try {
         const customTargets = await getAssetUrl('targets.mind', `/targets.mind?v=${targetVersion}`);
-        const savedWards = await getWardsConfig();
+        let resolvedWards = await getWardsConfig();
+
+        // If no local IndexedDB configuration (e.g. voters opening from WhatsApp), fetch published /wards.json
+        if (!resolvedWards || resolvedWards.length === 0) {
+          try {
+            const publicRes = await fetch(`/wards.json?v=${targetVersion}`);
+            if (publicRes.ok) {
+              const publicData = await publicRes.json();
+              if (Array.isArray(publicData) && publicData.length > 0) {
+                resolvedWards = publicData;
+              }
+            }
+          } catch (e) {
+            console.warn('Could not load public wards.json:', e);
+          }
+        }
 
         if (active) {
           setTargetSrc(customTargets);
-          if (savedWards && savedWards.length > 0) {
-            setWards(savedWards);
+          if (resolvedWards && resolvedWards.length > 0) {
+            setWards(resolvedWards);
           } else {
             // Fall back to default ward with any cached singular assets
             const marker = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${targetVersion}`);
