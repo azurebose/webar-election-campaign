@@ -86,9 +86,9 @@ Open `http://localhost:3000` on your mobile phone or desktop with camera permiss
 3. Navigate to **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**.
 4. Select your `webar-election-campaign` repository.
 5. In **Build Settings**:
-   - **Framework Preset**: `Next.js`
-   - **Build Command**: `npx @cloudflare/next-on-pages` (or standard `npm run build`)
-   - **Build Output Directory**: `.vercel/output/static`
+   - **Framework Preset**: `None` or `Next.js (Static HTML Export)`
+   - **Build Command**: `npm run build`
+   - **Build Output Directory**: `out`
    - **Root directory**: `/`
 6. Under **Environment Variables**, add:
    - `NODE_VERSION` = `20`

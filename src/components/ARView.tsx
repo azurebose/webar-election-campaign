@@ -118,15 +118,10 @@ export default function ARView({ onExit }: ARViewProps) {
       pledgeBtn.setAttribute('material', 'color: #ffd700'); // Visual micro-feedback: swap to bright gold
     }
 
-    try {
-      await fetch('/api/pledge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-    } catch (err) {
-      console.error('Failed to record pledge:', err);
-    }
+    // Record pledge in localStorage and Supabase if configured
+    localStorage.setItem('voter_pledged', 'true');
+    const { syncPledgeToSupabase } = await import('@/utils/supabaseClient');
+    await syncPledgeToSupabase(email);
 
     setTimeout(() => {
       window.location.href = 'https://example.com/signup';
@@ -169,17 +164,13 @@ export default function ARView({ onExit }: ARViewProps) {
       localStorage.setItem('ar_scan_count', nextScans.toString());
       setScanCount(nextScans);
 
-      try {
-        await fetch('/api/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            increment: 1,
-            email: localStorage.getItem('auth_email') || null
-          })
-        });
-      } catch (e) {
-        console.error('Error logging scan:', e);
+      // Sync with Supabase if configured
+      if (authed) {
+        const storedEmail = localStorage.getItem('auth_email');
+        if (storedEmail) {
+          const { syncUserToSupabase } = await import('@/utils/supabaseClient');
+          await syncUserToSupabase(storedEmail, nextScans);
+        }
       }
     },
     [wards]

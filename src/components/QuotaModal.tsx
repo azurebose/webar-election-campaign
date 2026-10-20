@@ -20,21 +20,8 @@ export default function QuotaModal({
     setStatus('validating');
 
     try {
-      try {
-        const res = await fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: targetEmail.trim() })
-        });
-        if (res.ok) {
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            await res.json().catch(() => ({}));
-          }
-        }
-      } catch (fetchErr) {
-        console.warn('Server auth endpoint unreachable, using client authentication:', fetchErr);
-      }
+      const { syncUserToSupabase } = await import('@/utils/supabaseClient');
+      await syncUserToSupabase(targetEmail.trim());
 
       setStatus('sent');
       localStorage.setItem('auth_email', targetEmail.trim());
