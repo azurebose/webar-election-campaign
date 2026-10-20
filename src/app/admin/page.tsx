@@ -357,64 +357,64 @@ export default function AdminPage() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5">
         {/* Banner Alert for Status */}
         {successMessage && (
-          <div className="bg-emerald-950/80 border border-emerald-500 p-4 rounded-2xl text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
+          <div className="bg-emerald-950/80 border border-emerald-500 p-3 sm:p-3.5 rounded-2xl text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
             <div className="flex items-center space-x-2">
-              <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
               <span>{successMessage}</span>
             </div>
-            <button type="button" onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-white">✕</button>
+            <button type="button" onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-white ml-2">✕</button>
           </div>
         )}
 
         {errorMessage && (
-          <div className="bg-red-950/80 border border-red-500 p-4 rounded-2xl text-red-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
+          <div className="bg-red-950/80 border border-red-500 p-3 sm:p-3.5 rounded-2xl text-red-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
             <span>{errorMessage}</span>
-            <button type="button" onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-white">✕</button>
+            <button type="button" onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-white ml-2">✕</button>
           </div>
         )}
 
         {/* Quick Vitals Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 flex items-center justify-between">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Local Scans Logged</p>
-              <p className="text-2xl font-black text-amber-400 mt-1">{stats.scansUsed}</p>
+              <p className="text-[10px] sm:text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Local Scans Logged</p>
+              <p className="text-xl sm:text-2xl font-black text-amber-400 mt-0.5">{stats.scansUsed}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
             </div>
           </div>
 
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 flex items-center justify-between">
+          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Cloudflare Edge Deployment</p>
-              <p className="text-sm font-bold text-emerald-400 mt-1.5 flex items-center space-x-1.5">
+              <p className="text-[10px] sm:text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Cloudflare Edge Deployment</p>
+              <p className="text-xs sm:text-sm font-bold text-emerald-400 mt-1 flex items-center space-x-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>Pages & Functions Active</span>
               </p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
             </div>
           </div>
 
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 flex items-center justify-between">
+          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Public Permissions</p>
-              <p className="text-sm font-bold text-orange-400 mt-1.5">Uploads Restricted to Admin Only</p>
+              <p className="text-[10px] sm:text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Public Permissions</p>
+              <p className="text-xs sm:text-sm font-bold text-orange-400 mt-1">Uploads Restricted to Admin</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
@@ -422,29 +422,50 @@ export default function AdminPage() {
         </div>
 
         {/* Studio Layout: 2 Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Left Column: Upload & Compiler Studio */}
-          <div className="lg:col-span-7 bg-gray-900/80 border border-gray-800 rounded-3xl p-5 sm:p-7 shadow-xl flex flex-col space-y-6">
-            <div className="border-b border-gray-800 pb-4">
-              <h2 className="text-lg font-extrabold text-white flex items-center space-x-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                <span>Campaign Target & Speech Studio</span>
-              </h2>
-              <p className="text-xs text-gray-400 mt-1">
-                Upload custom campaign posters and candidate speech videos. When compiled, only this poster triggers the AR speech video for all public voters.
-              </p>
+          <div className="lg:col-span-7 bg-gray-900/80 border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col space-y-4 sm:space-y-5">
+            <div className="border-b border-gray-800 pb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center space-x-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                  <span>Campaign Target & Speech Studio</span>
+                </h2>
+                <p className="text-[11px] sm:text-xs text-gray-400 mt-0.5">
+                  Compile new posters & speech videos. Changes update the public voter AR tracking live.
+                </p>
+              </div>
             </div>
 
             {/* Poster Upload Dropzone */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center justify-between">
-                <span>1. Campaign Poster / Target Image *</span>
-                <span className="text-[10px] text-gray-400 font-normal">PNG or JPG with high contrast</span>
-              </label>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                  1. Campaign Poster / Target Image *
+                </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/sample_marker.png');
+                      const blob = await res.blob();
+                      const file = new File([blob], 'sample_marker.png', { type: 'image/png' });
+                      setSelectedImage(file);
+                      setImagePreview('/sample_marker.png');
+                      setErrorMessage(null);
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }}
+                  className="text-[10px] text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold transition-all"
+                >
+                  Select Official Alliance Poster
+                </button>
+              </div>
 
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all ${
                   imagePreview
                     ? 'border-amber-400/80 bg-amber-950/20'
                     : 'border-gray-700 hover:border-amber-400/60 bg-gray-950/50'
@@ -459,21 +480,21 @@ export default function AdminPage() {
                 />
 
                 {imagePreview ? (
-                  <div className="flex flex-col items-center space-y-3">
+                  <div className="flex flex-col items-center space-y-2">
                     <img
                       src={imagePreview}
                       alt="Preview"
-                      className="max-h-48 rounded-xl object-contain shadow-lg border border-amber-400/30"
+                      className="max-h-36 sm:max-h-44 rounded-xl object-contain shadow-lg border border-amber-400/30"
                     />
-                    <p className="text-xs text-amber-300 font-medium">Click to choose a different image</p>
+                    <p className="text-[11px] text-amber-300 font-medium">Click to choose a different image</p>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center space-y-2 text-gray-400">
-                    <svg className="w-9 h-9 text-amber-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex flex-col items-center space-y-1.5 text-gray-400 py-3 sm:py-5">
+                    <svg className="w-8 h-8 text-amber-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                     <p className="text-xs font-semibold text-gray-200">Click to upload Campaign Poster</p>
-                    <p className="text-[11px] text-gray-400">Supports BJP Lotus, TDP Bicycle, JSP Glass or Candidate Photos</p>
+                    <p className="text-[10px] text-gray-400">BJP Lotus, TDP Bicycle, JSP Glass or Candidate Photos</p>
                   </div>
                 )}
               </div>
@@ -564,10 +585,10 @@ export default function AdminPage() {
           </div>
 
           {/* Right Column: Live Active Media Preview */}
-          <div className="lg:col-span-5 flex flex-col space-y-6">
-            <div className="bg-gray-900/80 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col space-y-4">
-              <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-                <h3 className="text-sm font-extrabold text-white flex items-center space-x-2">
+          <div className="lg:col-span-5 flex flex-col space-y-4">
+            <div className="bg-gray-900/80 border border-gray-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col space-y-3">
+              <div className="flex items-center justify-between border-b border-gray-800 pb-2.5">
+                <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center space-x-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
                   <span>Currently Active Poster</span>
                 </h3>
@@ -575,29 +596,29 @@ export default function AdminPage() {
                   href={activeMarkerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-amber-400 hover:text-amber-300 font-semibold"
+                  className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold"
                 >
                   View Full Size ↗
                 </a>
               </div>
 
-              <div className="w-full bg-black/60 rounded-2xl p-4 flex items-center justify-center border border-gray-800/80">
+              <div className="w-full bg-black/60 rounded-2xl p-3 flex items-center justify-center border border-gray-800/80">
                 <img
                   src={activeMarkerUrl}
                   alt="Active Poster"
-                  className="max-h-56 object-contain rounded-xl shadow-md border border-amber-500/20"
+                  className="max-h-40 sm:max-h-48 object-contain rounded-xl shadow-md border border-amber-500/20"
                 />
               </div>
 
-              <div className="text-[11px] text-gray-400">
+              <div className="text-[10px] sm:text-[11px] text-gray-400">
                 Voters point their phone camera at this poster image. As soon as detected, MindAR locks tracking and plays the candidate speech below.
               </div>
             </div>
 
             {/* Candidate Speech Video Preview */}
-            <div className="bg-gray-900/80 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col space-y-4">
-              <div className="border-b border-gray-800 pb-3">
-                <h3 className="text-sm font-extrabold text-white flex items-center space-x-2">
+            <div className="bg-gray-900/80 border border-gray-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col space-y-3">
+              <div className="border-b border-gray-800 pb-2.5">
+                <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center space-x-2">
                   <span className="w-2 h-2 rounded-full bg-orange-400" />
                   <span>Currently Active Speech Video</span>
                 </h3>
@@ -608,11 +629,11 @@ export default function AdminPage() {
                   src={activeVideoUrl}
                   controls
                   playsInline
-                  className="w-full max-h-48 object-cover bg-black"
+                  className="w-full max-h-36 sm:max-h-40 object-cover bg-black"
                 />
               </div>
 
-              <div className="text-[11px] text-gray-400">
+              <div className="text-[10px] sm:text-[11px] text-gray-400">
                 This speech video appears anchored in 3D directly over the poster in WebAR with the 3D &apos;Pledge to Vote&apos; button.
               </div>
             </div>
