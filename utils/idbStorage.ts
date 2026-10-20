@@ -95,3 +95,47 @@ export async function clearAllCustomAssets(): Promise<void> {
   }
 }
 
+export interface WardPoster {
+  id: string;
+  wardNumber: string;
+  wardName: string;
+  candidateName: string;
+  markerUrl: string;
+  videoUrl: string;
+}
+
+export async function saveWardsConfig(wards: WardPoster[]): Promise<void> {
+  try {
+    const jsonBlob = new Blob([JSON.stringify(wards)], { type: 'application/json' });
+    await saveAssetBlob('wards_config.json', jsonBlob);
+  } catch (e) {
+    console.warn('Failed to save wards config:', e);
+  }
+}
+
+export async function getWardsConfig(): Promise<WardPoster[] | null> {
+  try {
+    const blob = await getAssetBlob('wards_config.json');
+    if (blob) {
+      const text = await blob.text();
+      const parsed: WardPoster[] = JSON.parse(text);
+      // Re-hydrate any IndexedDB blobs into fresh object URLs for the current session
+      for (const ward of parsed) {
+        const markerBlob = await getAssetBlob(`ward_marker_${ward.id}.png`);
+        if (markerBlob) {
+          ward.markerUrl = URL.createObjectURL(markerBlob);
+        }
+        const videoBlob = await getAssetBlob(`ward_video_${ward.id}.mp4`);
+        if (videoBlob) {
+          ward.videoUrl = URL.createObjectURL(videoBlob);
+        }
+      }
+      return parsed;
+    }
+  } catch (e) {
+    console.warn('Failed to read wards config:', e);
+  }
+  return null;
+}
+
+

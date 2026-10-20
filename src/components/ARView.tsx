@@ -2,12 +2,21 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import QuotaModal from '@/components/QuotaModal';
-import TargetUploadModal from '@/components/TargetUploadModal';
-import { getAssetUrl } from '@/utils/idbStorage';
+import WardPosterModal from '@/components/WardPosterModal';
+import { getAssetUrl, getWardsConfig, WardPoster } from '@/utils/idbStorage';
 
 interface ARViewProps {
   onExit?: () => void;
 }
+
+const DEFAULT_WARD: WardPoster = {
+  id: 'ward-default',
+  wardNumber: 'Ward 1 / వార్డు 1',
+  wardName: 'Official Alliance Poster',
+  candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
+  markerUrl: '/sample_marker.png',
+  videoUrl: '/campaign_speech.mp4'
+};
 
 export default function ARView({ onExit }: ARViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -15,44 +24,56 @@ export default function ARView({ onExit }: ARViewProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [showQuota, setShowQuota] = useState<boolean>(false);
   const [isPledged, setIsPledged] = useState<boolean>(false);
-  const [isTargetFound, setIsTargetFound] = useState<boolean>(false);
+  const [activeWardIndex, setActiveWardIndex] = useState<number | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
-  const [targetVersion, setTargetVersion] = useState<number>(Date.now());
-  const [targetSrc, setTargetSrc] = useState<string>(`/targets.mind?v=${Date.now()}`);
-  const [videoSrc, setVideoSrc] = useState<string>(`/campaign_speech.mp4?v=${Date.now()}`);
-  const [markerSrc, setMarkerSrc] = useState<string>(`/sample_marker.png?v=${Date.now()}`);
 
-  // Dynamically resolve custom assets from browser IndexedDB or fall back to /public defaults
+  // Multi-Ward Configuration & Assets
+  const [wards, setWards] = useState<WardPoster[]>([DEFAULT_WARD]);
+  const [isWardModalOpen, setIsWardModalOpen] = useState<boolean>(false);
+  const [targetVersion] = useState<number>(Date.now());
+  const [targetSrc, setTargetSrc] = useState<string>(`/targets.mind?v=${Date.now()}`);
+
+  // Load compiled targets.mind and multi-ward configuration from IndexedDB / Defaults
   useEffect(() => {
     let active = true;
-    async function resolveAssets() {
-      const tUrl = await getAssetUrl('targets.mind', `/targets.mind?v=${targetVersion}`);
-      const vUrl = await getAssetUrl('campaign_speech.mp4', `/campaign_speech.mp4?v=${targetVersion}`);
-      const mUrl = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${targetVersion}`);
+    async function loadCampaignAssets() {
+      const customTargets = await getAssetUrl('targets.mind', `/targets.mind?v=${targetVersion}`);
+      const savedWards = await getWardsConfig();
+
       if (active) {
-        setTargetSrc(tUrl);
-        setVideoSrc(vUrl);
-        setMarkerSrc(mUrl);
+        setTargetSrc(customTargets);
+        if (savedWards && savedWards.length > 0) {
+          setWards(savedWards);
+        } else {
+          // Fall back to default ward with any cached singular assets
+          const marker = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${targetVersion}`);
+          const speech = await getAssetUrl('campaign_speech.mp4', `/campaign_speech.mp4?v=${targetVersion}`);
+          setWards([
+            {
+              id: 'ward-1',
+              wardNumber: 'Ward 1 / వార్డు 1',
+              wardName: 'Official Alliance Campaign Poster',
+              candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
+              markerUrl: marker,
+              videoUrl: speech
+            }
+          ]);
+        }
       }
     }
-    resolveAssets();
+    loadCampaignAssets();
     return () => {
       active = false;
     };
   }, [targetVersion]);
 
-  // Sync state with localStorage on mount
+  // Sync scan quota with localStorage on mount
   useEffect(() => {
     const storedScans = parseInt(localStorage.getItem('ar_scan_count') || '0', 10);
     setScanCount(storedScans);
     const storedEmail = localStorage.getItem('auth_email');
     setIsAuthenticated(!!storedEmail);
   }, []);
-
-  const getVideoElement = (): HTMLVideoElement | null => {
-    return document.getElementById('campaign-speech-video') as HTMLVideoElement | null;
-  };
 
   const handlePledge = useCallback(async () => {
     if (isPledged) return;
@@ -61,7 +82,7 @@ export default function ARView({ onExit }: ARViewProps) {
     const email = localStorage.getItem('auth_email') || 'anonymous@voter.local';
     const pledgeBtn = document.getElementById('pledge-button');
     if (pledgeBtn) {
-      pledgeBtn.setAttribute('material', 'color: #ffd700'); // micro-feedback: color swap to bright gold
+      pledgeBtn.setAttribute('material', 'color: #ffd700'); // Visual micro-feedback: swap to bright gold
     }
 
     try {
@@ -79,55 +100,70 @@ export default function ARView({ onExit }: ARViewProps) {
     }, 1200);
   }, [isPledged]);
 
-  // Quota verification & session increment
-  const handleTargetFound = useCallback(async () => {
-    const currentScans = parseInt(localStorage.getItem('ar_scan_count') || '0', 10);
-    const authed = !!localStorage.getItem('auth_email');
-    const vid = getVideoElement();
+  // Handle detection of any ward poster
+  const handleTargetFound = useCallback(
+    async (wardIdx: number) => {
+      setActiveWardIndex(wardIdx);
 
-    setIsTargetFound(true);
+      // Play matching ward video and pause all others
+      wards.forEach((_, idx) => {
+        const vid = document.getElementById(`campaign-speech-video-${idx}`) as HTMLVideoElement | null;
+        if (vid) {
+          if (idx === wardIdx) {
+            vid.currentTime = 0;
+            vid.play().catch((err) => console.log('Autoplay deferred:', err));
+          } else {
+            vid.pause();
+          }
+        }
+      });
 
-    if (currentScans >= 2 && !authed) {
+      // Verify scan quota
+      const currentScans = parseInt(localStorage.getItem('ar_scan_count') || '0', 10);
+      const authed = !!localStorage.getItem('auth_email');
+
+      if (currentScans >= 2 && !authed) {
+        const currentVid = document.getElementById(`campaign-speech-video-${wardIdx}`) as HTMLVideoElement | null;
+        if (currentVid) {
+          currentVid.pause();
+        }
+        setShowQuota(true);
+        return;
+      }
+
+      // Increment scan allowance once per detection
+      const nextScans = currentScans + 1;
+      localStorage.setItem('ar_scan_count', nextScans.toString());
+      setScanCount(nextScans);
+
+      try {
+        await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            increment: 1,
+            email: localStorage.getItem('auth_email') || null
+          })
+        });
+      } catch (e) {
+        console.error('Error logging scan:', e);
+      }
+    },
+    [wards]
+  );
+
+  const handleTargetLost = useCallback(
+    (wardIdx: number) => {
+      const vid = document.getElementById(`campaign-speech-video-${wardIdx}`) as HTMLVideoElement | null;
       if (vid) {
         vid.pause();
       }
-      setShowQuota(true);
-      return;
-    }
+      setActiveWardIndex((prev) => (prev === wardIdx ? null : prev));
+    },
+    []
+  );
 
-    // Play video
-    if (vid) {
-      vid.currentTime = 0;
-      vid.play().catch((err) => console.log('Autoplay deferred:', err));
-    }
-
-    // Increment scan allowance once per unique detection session
-    const nextScans = currentScans + 1;
-    localStorage.setItem('ar_scan_count', nextScans.toString());
-    setScanCount(nextScans);
-
-    try {
-      await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          increment: 1,
-          email: localStorage.getItem('auth_email') || null
-        })
-      });
-    } catch (e) {
-      console.error('Error logging scan:', e);
-    }
-  }, []);
-
-  const handleTargetLost = useCallback(() => {
-    setIsTargetFound(false);
-    const vid = getVideoElement();
-    if (vid) {
-      vid.pause();
-    }
-  }, []);
-
+  // Register A-Frame components & target listeners for each ward
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -143,11 +179,19 @@ export default function ARView({ onExit }: ARViewProps) {
       });
     }
 
-    const targetEl = document.getElementById('target-anchor');
-    if (targetEl) {
-      targetEl.addEventListener('targetFound', handleTargetFound);
-      targetEl.addEventListener('targetLost', handleTargetLost);
-    }
+    // Attach targetFound / targetLost listeners for all ward anchors
+    const attachedListeners: Array<{ el: HTMLElement; onFound: () => void; onLost: () => void }> = [];
+
+    wards.forEach((_, idx) => {
+      const targetEl = document.getElementById(`target-anchor-${idx}`);
+      if (targetEl) {
+        const onFound = () => handleTargetFound(idx);
+        const onLost = () => handleTargetLost(idx);
+        targetEl.addEventListener('targetFound', onFound);
+        targetEl.addEventListener('targetLost', onLost);
+        attachedListeners.push({ el: targetEl, onFound, onLost });
+      }
+    });
 
     const sceneEl = document.querySelector('a-scene');
     const handleArError = (event: any) => {
@@ -160,40 +204,35 @@ export default function ARView({ onExit }: ARViewProps) {
     }
 
     return () => {
-      if (targetEl) {
-        targetEl.removeEventListener('targetFound', handleTargetFound);
-        targetEl.removeEventListener('targetLost', handleTargetLost);
-      }
+      attachedListeners.forEach(({ el, onFound, onLost }) => {
+        el.removeEventListener('targetFound', onFound);
+        el.removeEventListener('targetLost', onLost);
+      });
       if (sceneEl) {
         sceneEl.removeEventListener('arError', handleArError);
       }
     };
-  }, [handlePledge, handleTargetFound, handleTargetLost, targetVersion]);
+  }, [wards, handlePledge, handleTargetFound, handleTargetLost, targetVersion]);
 
   const handleAuthenticated = () => {
     setIsAuthenticated(true);
     setShowQuota(false);
-    const vid = getVideoElement();
-    if (vid) {
-      vid.play().catch(console.error);
+    if (activeWardIndex !== null) {
+      const vid = document.getElementById(`campaign-speech-video-${activeWardIndex}`) as HTMLVideoElement | null;
+      if (vid) {
+        vid.play().catch(console.error);
+      }
     }
   };
 
-  const handleTargetUpdated = () => {
-    setTargetVersion(Date.now());
-    setIsTargetFound(false);
-    // Reload page to re-initialize MindAR WebGL context cleanly with new targets
-    setTimeout(() => {
-      window.location.reload();
-    }, 400);
-  };
+  const activeWard = activeWardIndex !== null ? wards[activeWardIndex] : null;
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-transparent select-none">
       {/* MindAR A-Frame WebAR Scene Viewport */}
       <div ref={containerRef} className="w-full h-full absolute inset-0 z-0">
         <a-scene
-          key={targetVersion}
+          key={`${targetVersion}-${wards.length}`}
           mindar-image={`imageTargetSrc: ${targetSrc}; filterMinCF: 0.0001; filterBeta: 0.001; autoStart: true; uiLoading: no; uiScanning: no;`}
           color-space="sRGB"
           renderer="colorManagement: true, physicallyCorrectLights; alpha: true"
@@ -202,16 +241,20 @@ export default function ARView({ onExit }: ARViewProps) {
           embedded
           style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
         >
+          {/* Preload Candidate Speech Videos for all Wards */}
           <a-assets timeout="10000">
-            <video
-              id="campaign-speech-video"
-              src={videoSrc}
-              preload="auto"
-              playsInline
-              webkit-playsinline="true"
-              loop
-              crossOrigin="anonymous"
-            />
+            {wards.map((ward, idx) => (
+              <video
+                key={`vid-asset-${ward.id || idx}`}
+                id={`campaign-speech-video-${idx}`}
+                src={ward.videoUrl}
+                preload="auto"
+                playsInline
+                webkit-playsinline="true"
+                loop
+                crossOrigin="anonymous"
+              />
+            ))}
           </a-assets>
 
           <a-camera
@@ -221,58 +264,73 @@ export default function ARView({ onExit }: ARViewProps) {
             raycaster="objects: .clickable"
           />
 
-          <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-            {/* Campaign Speech Video Plane attached to poster */}
-            <a-video
-              src="#campaign-speech-video"
-              position="0 0.1 0"
-              width="1"
-              height="0.65"
-              rotation="0 0 0"
-            />
-
-            {/* Interactive 3D 'Pledge to Vote' Button with Anti-Jitter Z-offset */}
+          {/* Dynamic MindAR Target Anchors for each Ward Poster */}
+          {wards.map((ward, idx) => (
             <a-entity
-              id="pledge-button"
-              className="clickable"
-              pledge-handler
-              geometry="primitive: box; width: 0.85; height: 0.2; depth: 0.02"
-              material="color: #dc2626; roughness: 0.25; metalness: 0.15"
-              position="0 -0.45 0.02"
+              key={`target-anchor-${ward.id || idx}`}
+              id={`target-anchor-${idx}`}
+              mindar-image-target={`targetIndex: ${idx}`}
             >
-              <a-text
-                value="PLEDGE TO VOTE"
-                align="center"
-                position="0 0 0.02"
-                width="2.6"
-                color="#ffffff"
-                font="kelsonsans"
+              {/* Ward Candidate Speech Video Plane attached to poster */}
+              <a-video
+                src={`#campaign-speech-video-${idx}`}
+                position="0 0.1 0"
+                width="1"
+                height="0.65"
+                rotation="0 0 0"
               />
+
+              {/* Interactive 3D 'Pledge to Vote' Button with Anti-Jitter Z-offset */}
+              <a-entity
+                id="pledge-button"
+                className="clickable"
+                pledge-handler
+                geometry="primitive: box; width: 0.85; height: 0.2; depth: 0.02"
+                material="color: #dc2626; roughness: 0.25; metalness: 0.15"
+                position="0 -0.45 0.02"
+              >
+                <a-text
+                  value="PLEDGE TO VOTE"
+                  align="center"
+                  position="0 0 0.02"
+                  width="2.6"
+                  color="#ffffff"
+                  font="kelsonsans"
+                />
+              </a-entity>
             </a-entity>
-          </a-entity>
+          ))}
         </a-scene>
       </div>
 
       {/* Top Left: Scan Quota Pill styled in Election Palette */}
       <div className="absolute top-4 left-4 z-20 bg-gray-950/90 backdrop-blur-md px-4 py-2 rounded-full border border-amber-500/40 text-xs tracking-wider text-amber-100 shadow-xl flex items-center space-x-2">
         <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]" />
-        <span>Scans Used: <strong className="text-amber-300 font-extrabold">{scanCount}</strong> {isAuthenticated ? '(Unlimited)' : '/ 2 Free'} <span className="text-[10px] text-amber-400/80 font-normal">(స్కాన్లు)</span></span>
+        <span>
+          Scans Used: <strong className="text-amber-300 font-extrabold">{scanCount}</strong>{' '}
+          {isAuthenticated ? '(Unlimited)' : '/ 2 Free'}{' '}
+          <span className="text-[10px] text-amber-400/80 font-normal">(స్కాన్లు)</span>
+        </span>
       </div>
 
-      {/* Top Right Actions: View Target Poster & Exit */}
+      {/* Top Right Actions: View Ward Posters Modal & Exit */}
       <div className="absolute top-4 right-4 z-20 flex items-center space-x-2">
-
-        <a
-          href={markerSrc}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-gray-950/90 hover:bg-gray-900 backdrop-blur-md px-3.5 py-2 rounded-full border border-amber-500/40 text-xs font-semibold tracking-wide text-amber-300 hover:text-amber-200 flex items-center space-x-1.5 transition-all shadow-xl"
+        <button
+          type="button"
+          onClick={() => setIsWardModalOpen(true)}
+          className="bg-gray-950/90 hover:bg-gray-900 backdrop-blur-md px-3.5 py-2 rounded-full border border-amber-500/40 text-xs font-semibold tracking-wide text-amber-300 hover:text-amber-200 flex items-center space-x-1.5 transition-all shadow-xl active:scale-95"
+          title="Browse all ward candidate posters"
         >
-          <span>View Poster / పోస్టర్</span>
+          <span>View Posters ({wards.length}) / పోస్టర్లు</span>
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+            />
           </svg>
-        </a>
+        </button>
 
         {onExit && (
           <button
@@ -289,7 +347,7 @@ export default function ARView({ onExit }: ARViewProps) {
       </div>
 
       {/* AR Scanning Reticle / Target Finder Viewport HUD in Amber-Orange Theme */}
-      {!isTargetFound && !showQuota && (
+      {activeWardIndex === null && !showQuota && (
         <div className="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center p-6">
           <div className="relative w-64 h-80 sm:w-72 sm:h-96 rounded-2xl border-2 border-dashed border-amber-400/60 flex items-center justify-center">
             {/* Viewfinder Corners */}
@@ -302,18 +360,20 @@ export default function ARView({ onExit }: ARViewProps) {
             <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_14px_#f59e0b] animate-scan-laser" />
 
             <div className="bg-black/80 backdrop-blur-md px-4 py-2.5 rounded-xl border border-amber-500/40 text-center shadow-lg">
-              <p className="text-xs font-bold text-amber-300">Point at Campaign Poster</p>
-              <p className="text-[11px] font-semibold text-amber-200/90 mt-0.5">ఎన్నికల పోస్టర్ వైపు చూపించండి</p>
+              <p className="text-xs font-bold text-amber-300">Point at Any Ward Poster</p>
+              <p className="text-[11px] font-semibold text-amber-200/90 mt-0.5">ఏదైనా వార్డు పోస్టర్ వైపు చూపించండి</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Target Locked Pill in Election Colors */}
-      {isTargetFound && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 bg-gradient-to-r from-red-950/90 via-orange-950/90 to-amber-950/90 border border-amber-400/60 backdrop-blur-md px-5 py-2.5 rounded-full text-xs text-amber-200 font-bold tracking-wide flex items-center space-x-2 shadow-[0_0_20px_rgba(245,158,11,0.3)] animate-in fade-in zoom-in-95 duration-200">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]" />
-          <span>Poster Detected — Speech Playing | పోస్టర్ గుర్తించబడింది</span>
+      {/* Ward Detected HUD Badge with Active Ward Details */}
+      {activeWard && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 max-w-[90vw] bg-gradient-to-r from-red-950/95 via-orange-950/95 to-amber-950/95 border border-amber-400/70 backdrop-blur-md px-5 py-2.5 rounded-full text-xs text-amber-200 font-bold tracking-wide flex items-center space-x-2.5 shadow-[0_0_25px_rgba(245,158,11,0.4)] animate-in fade-in zoom-in-95 duration-200">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399] flex-shrink-0" />
+          <span className="truncate">
+            🎯 <strong className="text-white">{activeWard.wardNumber}</strong>: {activeWard.wardName || 'Speech Playing!'} — {activeWard.candidateName}
+          </span>
         </div>
       )}
 
@@ -325,17 +385,17 @@ export default function ARView({ onExit }: ARViewProps) {
         </div>
       )}
 
-      {/* Target Upload & Compilation Modal */}
-      <TargetUploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onTargetUpdated={handleTargetUpdated}
+      {/* Multi-Ward Poster Browse & Download Modal */}
+      <WardPosterModal
+        isOpen={isWardModalOpen}
+        onClose={() => setIsWardModalOpen(false)}
+        wards={wards}
       />
 
       {/* Zero-Button Passwordless Email Capture Modal */}
       {showQuota && <QuotaModal onAuthenticated={handleAuthenticated} />}
 
-      {/* Developer Attribution & Admin Link */}
+      {/* Developer Attribution & Admin Command Link */}
       <div className="absolute bottom-2.5 right-3.5 z-20 text-[10px] text-amber-200/50 font-medium tracking-wider select-none flex items-center space-x-1">
         <span>Developed by / రూపొందించినది:</span>
         <span className="text-amber-400 font-bold">Bose Kodelli</span>
@@ -345,7 +405,12 @@ export default function ARView({ onExit }: ARViewProps) {
           title="Campaign Admin Portal"
         >
           <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+            />
           </svg>
         </a>
       </div>

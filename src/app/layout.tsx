@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           strategy="afterInteractive"
         />
       </head>
-      <body className="h-full bg-transparent text-white antialiased overflow-hidden">
+      <body className="min-h-full bg-slate-950 text-white antialiased">
         {children}
       </body>
     </html>
