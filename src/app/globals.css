@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: transparent !important;
+}
+
+/* MindAR & A-Frame Transparency & Layering Fixes */
+a-scene {
+  background-color: transparent !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  position: absolute !important;
+  top: 0;
+  left: 0;
+}
+
+.a-canvas {
+  background-color: transparent !important;
+}
+
+/* Prevent Tailwind preflight from overriding MindAR video element geometry */
+video:not(#campaign-speech-video) {
+  max-width: none !important;
+}
+
+/* Saffron-Gold Election Laser scanning pulse animation */
+@keyframes scan-laser {
+  0% { top: 10%; opacity: 0.7; }
+  50% { top: 90%; opacity: 1; }
+  100% { top: 10%; opacity: 0.7; }
+}
+
+.animate-scan-laser {
+  animation: scan-laser 2.3s ease-in-out infinite;
+}
+
+/* Campaign Palette Gradient Text */
+.text-election-gradient {
+  background: linear-gradient(135deg, #fde047 0%, #fb923c 45%, #ef4444 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
