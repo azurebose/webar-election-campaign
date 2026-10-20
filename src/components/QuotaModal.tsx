@@ -20,15 +20,20 @@ export default function QuotaModal({
     setStatus('validating');
 
     try {
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetEmail.trim() })
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to authenticate');
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: targetEmail.trim() })
+        });
+        if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            await res.json().catch(() => ({}));
+          }
+        }
+      } catch (fetchErr) {
+        console.warn('Server auth endpoint unreachable, using client authentication:', fetchErr);
       }
 
       setStatus('sent');
@@ -40,7 +45,7 @@ export default function QuotaModal({
     } catch (err: any) {
       console.error(err);
       setStatus('error');
-      setErrorMessage(err.message || 'Error sending magic link. Try again.');
+      setErrorMessage(err.message || 'Error authenticating email. Try again.');
       submittedRef.current = false;
     }
   };

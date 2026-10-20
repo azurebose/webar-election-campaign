@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { saveAssetBlob } from '@/utils/idbStorage';
 
 interface TargetUploadModalProps {
   isOpen: boolean;
@@ -128,29 +129,45 @@ export default function TargetUploadModal({
         mindBlob = new Blob([exportedBuffer], { type: 'application/octet-stream' });
       }
 
-      // 2. Upload to server to persist in /public
-      setStatusMessage('Saving target and video to project...');
+      // 2. Persist target, marker image, and video to browser local storage (IndexedDB)
+      setStatusMessage('Saving target and video assets...');
       setCompileProgress(96);
 
-      const formData = new FormData();
       if (mindBlob) {
-        formData.append('mind', mindBlob, 'targets.mind');
+        await saveAssetBlob('targets.mind', mindBlob);
       }
       if (selectedImage) {
-        formData.append('image', selectedImage, 'sample_marker.png');
+        await saveAssetBlob('sample_marker.png', selectedImage);
       }
       if (selectedVideo) {
-        formData.append('video', selectedVideo, 'campaign_speech.mp4');
+        await saveAssetBlob('campaign_speech.mp4', selectedVideo);
       }
 
-      const res = await fetch('/api/save-target', {
-        method: 'POST',
-        body: formData
-      });
+      // Best-effort sync to server endpoint if available
+      try {
+        const formData = new FormData();
+        if (mindBlob) {
+          formData.append('mind', mindBlob, 'targets.mind');
+        }
+        if (selectedImage) {
+          formData.append('image', selectedImage, 'sample_marker.png');
+        }
+        if (selectedVideo) {
+          formData.append('video', selectedVideo, 'campaign_speech.mp4');
+        }
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to save uploaded target to server.');
+        const res = await fetch('/api/save-target', {
+          method: 'POST',
+          body: formData
+        });
+        if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            await res.json().catch(() => ({}));
+          }
+        }
+      } catch (syncErr) {
+        console.warn('Server asset sync skipped; browser IndexedDB storage active:', syncErr);
       }
 
       setCompileProgress(100);

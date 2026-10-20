@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import QuotaModal from '@/components/QuotaModal';
 import TargetUploadModal from '@/components/TargetUploadModal';
+import { getAssetUrl } from '@/utils/idbStorage';
 
 interface ARViewProps {
   onExit?: () => void;
@@ -18,6 +19,28 @@ export default function ARView({ onExit }: ARViewProps) {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const [targetVersion, setTargetVersion] = useState<number>(Date.now());
+  const [targetSrc, setTargetSrc] = useState<string>(`/targets.mind?v=${Date.now()}`);
+  const [videoSrc, setVideoSrc] = useState<string>(`/campaign_speech.mp4?v=${Date.now()}`);
+  const [markerSrc, setMarkerSrc] = useState<string>(`/sample_marker.png?v=${Date.now()}`);
+
+  // Dynamically resolve custom assets from browser IndexedDB or fall back to /public defaults
+  useEffect(() => {
+    let active = true;
+    async function resolveAssets() {
+      const tUrl = await getAssetUrl('targets.mind', `/targets.mind?v=${targetVersion}`);
+      const vUrl = await getAssetUrl('campaign_speech.mp4', `/campaign_speech.mp4?v=${targetVersion}`);
+      const mUrl = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${targetVersion}`);
+      if (active) {
+        setTargetSrc(tUrl);
+        setVideoSrc(vUrl);
+        setMarkerSrc(mUrl);
+      }
+    }
+    resolveAssets();
+    return () => {
+      active = false;
+    };
+  }, [targetVersion]);
 
   // Sync state with localStorage on mount
   useEffect(() => {
@@ -171,7 +194,7 @@ export default function ARView({ onExit }: ARViewProps) {
       <div ref={containerRef} className="w-full h-full absolute inset-0 z-0">
         <a-scene
           key={targetVersion}
-          mindar-image={`imageTargetSrc: /targets.mind?v=${targetVersion}; filterMinCF: 0.0001; filterBeta: 0.001; autoStart: true; uiLoading: no; uiScanning: no;`}
+          mindar-image={`imageTargetSrc: ${targetSrc}; filterMinCF: 0.0001; filterBeta: 0.001; autoStart: true; uiLoading: no; uiScanning: no;`}
           color-space="sRGB"
           renderer="colorManagement: true, physicallyCorrectLights; alpha: true"
           vr-mode-ui="enabled: false"
@@ -182,7 +205,7 @@ export default function ARView({ onExit }: ARViewProps) {
           <a-assets timeout="10000">
             <video
               id="campaign-speech-video"
-              src={`/campaign_speech.mp4?v=${targetVersion}`}
+              src={videoSrc}
               preload="auto"
               playsInline
               webkit-playsinline="true"
@@ -250,7 +273,7 @@ export default function ARView({ onExit }: ARViewProps) {
         </button>
 
         <a
-          href={`/sample_marker.png?v=${targetVersion}`}
+          href={markerSrc}
           target="_blank"
           rel="noopener noreferrer"
           className="bg-gray-950/90 hover:bg-gray-900 backdrop-blur-md px-3.5 py-2 rounded-full border border-amber-500/40 text-xs font-semibold tracking-wide text-amber-300 hover:text-amber-200 flex items-center space-x-1.5 transition-all shadow-xl"
