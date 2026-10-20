@@ -73,7 +73,39 @@ Open `http://localhost:3000` on your mobile phone or desktop with camera permiss
 
 ---
 
+## Deployment Guides
+
+### Option 1: Cloudflare Pages (Unlimited Bandwidth & Free SSL)
+1. Push your repository to **GitHub**:
+   ```bash
+   git remote add origin https://github.com/<YOUR_USER>/<REPO>.git
+   git branch -M main
+   git push -u origin main
+   ```
+2. Log into the [Cloudflare Dashboard](https://dash.cloudflare.com).
+3. Navigate to **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**.
+4. Select your `webar-election-campaign` repository.
+5. In **Build Settings**:
+   - **Framework Preset**: `Next.js`
+   - **Build Command**: `npx @cloudflare/next-on-pages` (or standard `npm run build`)
+   - **Build Output Directory**: `.vercel/output/static`
+   - **Root directory**: `/`
+6. Under **Environment Variables**, add:
+   - `NODE_VERSION` = `20`
+   - `NEXT_PUBLIC_SUPABASE_URL` = `<your-supabase-url>` (optional)
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `<your-anon-key>` (optional)
+7. Under **Settings** → **Functions** → **Compatibility Flags**, add: `nodejs_compat`.
+8. Click **Save and Deploy**. Cloudflare will deploy to a global HTTPS edge URL (e.g., `https://webar-election-campaign.pages.dev`).
+
+### Option 2: Vercel (1-Click Native Deployment)
+1. Import your GitHub repository on [vercel.com/new](https://vercel.com/new).
+2. Add your environment variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+3. Click **Deploy**. Vercel will build and provision an SSL-secured `.vercel.app` domain.
+
+---
+
 ## Author & Credits
 **Developed by Bose Kodelli**  
 A full-stack WebAR election campaigning application featuring real-time image tracking, speech video playback, interactive 3D pledge voting, quota enforcement, and zero-button passwordless email authentication.
+
 
