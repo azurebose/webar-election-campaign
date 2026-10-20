@@ -10,7 +10,7 @@ export default function Home() {
   const [hasStarted, setHasStarted] = useState(false);
 
   return (
-    <main className="w-screen h-screen fixed inset-0 overflow-hidden bg-gray-950">
+    <main className={`w-screen h-screen fixed inset-0 overflow-hidden ${hasStarted ? 'bg-transparent' : 'bg-gray-950'}`}>
       {!hasStarted ? (
         <StartOverlay onStart={() => setHasStarted(true)} />
       ) : (

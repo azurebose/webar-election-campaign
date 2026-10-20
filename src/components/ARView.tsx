@@ -27,37 +27,70 @@ export default function ARView({ onExit }: ARViewProps) {
   const [activeWardIndex, setActiveWardIndex] = useState<number | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Multi-Ward Configuration & Assets
+  // Multi-Ward Configuration & Readiness
+  const [isReady, setIsReady] = useState<boolean>(false);
   const [wards, setWards] = useState<WardPoster[]>([DEFAULT_WARD]);
   const [isWardModalOpen, setIsWardModalOpen] = useState<boolean>(false);
   const [targetVersion] = useState<number>(Date.now());
   const [targetSrc, setTargetSrc] = useState<string>(`/targets.mind?v=${Date.now()}`);
 
-  // Load compiled targets.mind and multi-ward configuration from IndexedDB / Defaults
+  // 1. Install WebRTC camera fallback polyfill for laptops/desktops/front webcams
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      const origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = async function (constraints) {
+        try {
+          return await origGUM(constraints);
+        } catch (err: any) {
+          console.warn('[WebAR] Rear camera constraint unavailable, falling back to default webcam:', err);
+          if (constraints && constraints.video) {
+            try {
+              // Fallback to any active webcam device
+              return await origGUM({ audio: false, video: true });
+            } catch (fallbackErr) {
+              console.error('[WebAR] Fallback webcam failed:', fallbackErr);
+              throw fallbackErr;
+            }
+          }
+          throw err;
+        }
+      };
+    }
+  }, []);
+
+  // 2. Load compiled targets.mind and multi-ward configuration from IndexedDB / Defaults
   useEffect(() => {
     let active = true;
     async function loadCampaignAssets() {
-      const customTargets = await getAssetUrl('targets.mind', `/targets.mind?v=${targetVersion}`);
-      const savedWards = await getWardsConfig();
+      try {
+        const customTargets = await getAssetUrl('targets.mind', `/targets.mind?v=${targetVersion}`);
+        const savedWards = await getWardsConfig();
 
-      if (active) {
-        setTargetSrc(customTargets);
-        if (savedWards && savedWards.length > 0) {
-          setWards(savedWards);
-        } else {
-          // Fall back to default ward with any cached singular assets
-          const marker = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${targetVersion}`);
-          const speech = await getAssetUrl('campaign_speech.mp4', `/campaign_speech.mp4?v=${targetVersion}`);
-          setWards([
-            {
-              id: 'ward-1',
-              wardNumber: 'Ward 1 / వార్డు 1',
-              wardName: 'Official Alliance Campaign Poster',
-              candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
-              markerUrl: marker,
-              videoUrl: speech
-            }
-          ]);
+        if (active) {
+          setTargetSrc(customTargets);
+          if (savedWards && savedWards.length > 0) {
+            setWards(savedWards);
+          } else {
+            // Fall back to default ward with any cached singular assets
+            const marker = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${targetVersion}`);
+            const speech = await getAssetUrl('campaign_speech.mp4', `/campaign_speech.mp4?v=${targetVersion}`);
+            setWards([
+              {
+                id: 'ward-1',
+                wardNumber: 'Ward 1 / వార్డు 1',
+                wardName: 'Official Alliance Campaign Poster',
+                candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
+                markerUrl: marker,
+                videoUrl: speech
+              }
+            ]);
+          }
+          setIsReady(true);
+        }
+      } catch (err) {
+        console.warn('Failed to load campaign assets:', err);
+        if (active) {
+          setIsReady(true);
         }
       }
     }
@@ -67,7 +100,7 @@ export default function ARView({ onExit }: ARViewProps) {
     };
   }, [targetVersion]);
 
-  // Sync scan quota with localStorage on mount
+  // 3. Sync scan quota with localStorage on mount
   useEffect(() => {
     const storedScans = parseInt(localStorage.getItem('ar_scan_count') || '0', 10);
     setScanCount(storedScans);
@@ -163,9 +196,9 @@ export default function ARView({ onExit }: ARViewProps) {
     []
   );
 
-  // Register A-Frame components & target listeners for each ward
+  // Register A-Frame components & target listeners for each ward once ready
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!isReady || !containerRef.current) return;
 
     // Attach A-Frame custom component if available
     const AFRAME = (window as any).AFRAME;
@@ -195,8 +228,8 @@ export default function ARView({ onExit }: ARViewProps) {
 
     const sceneEl = document.querySelector('a-scene');
     const handleArError = (event: any) => {
-      console.error('MindAR error:', event);
-      setCameraError('Unable to access camera. Please allow camera permissions or access via localhost/HTTPS.');
+      console.warn('MindAR scene error detected:', event);
+      setCameraError('Unable to start camera stream. Please check camera permissions or click Retry below.');
     };
 
     if (sceneEl) {
@@ -211,8 +244,24 @@ export default function ARView({ onExit }: ARViewProps) {
       if (sceneEl) {
         sceneEl.removeEventListener('arError', handleArError);
       }
+      // Stop lingering camera tracks to prevent camera lock
+      const videoEls = document.querySelectorAll('video');
+      videoEls.forEach((v) => {
+        if (v.srcObject) {
+          try {
+            const stream = v.srcObject as MediaStream;
+            stream.getTracks().forEach((track) => track.stop());
+            v.srcObject = null;
+          } catch (e) {}
+        }
+      });
+      if ((sceneEl as any)?.systems?.['mindar-image-system']) {
+        try {
+          (sceneEl as any).systems['mindar-image-system'].stop();
+        } catch (e) {}
+      }
     };
-  }, [wards, handlePledge, handleTargetFound, handleTargetLost, targetVersion]);
+  }, [isReady, wards, handlePledge, handleTargetFound, handleTargetLost]);
 
   const handleAuthenticated = () => {
     setIsAuthenticated(true);
@@ -225,14 +274,45 @@ export default function ARView({ onExit }: ARViewProps) {
     }
   };
 
+  const handleRetryCamera = () => {
+    setCameraError(null);
+    // Stop all tracks and reload cleanly
+    const videoEls = document.querySelectorAll('video');
+    videoEls.forEach((v) => {
+      if (v.srcObject) {
+        try {
+          const stream = v.srcObject as MediaStream;
+          stream.getTracks().forEach((track) => track.stop());
+          v.srcObject = null;
+        } catch (e) {}
+      }
+    });
+    window.location.reload();
+  };
+
   const activeWard = activeWardIndex !== null ? wards[activeWardIndex] : null;
+
+  // Show loading indicator until ward configuration is loaded to prevent double-mount
+  if (!isReady) {
+    return (
+      <div className="relative w-full h-screen overflow-hidden bg-transparent select-none flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center mb-3 animate-spin">
+          <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </div>
+        <p className="text-sm font-bold text-amber-300">Initializing AR Camera & Campaign Wards...</p>
+        <p className="text-xs text-amber-200/80 mt-1">కెమెరా మరియు వార్డుల సమాచారం లోడ్ అవుతోంది...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-transparent select-none">
       {/* MindAR A-Frame WebAR Scene Viewport */}
-      <div ref={containerRef} className="w-full h-full absolute inset-0 z-0">
+      <div ref={containerRef} className="w-full h-full absolute inset-0 z-0 bg-transparent">
         <a-scene
-          key={`${targetVersion}-${wards.length}`}
+          key={targetVersion}
           mindar-image={`imageTargetSrc: ${targetSrc}; filterMinCF: 0.0001; filterBeta: 0.001; autoStart: true; uiLoading: no; uiScanning: no;`}
           color-space="sRGB"
           renderer="colorManagement: true, physicallyCorrectLights; alpha: true"
@@ -347,7 +427,7 @@ export default function ARView({ onExit }: ARViewProps) {
       </div>
 
       {/* AR Scanning Reticle / Target Finder Viewport HUD in Amber-Orange Theme */}
-      {activeWardIndex === null && !showQuota && (
+      {activeWardIndex === null && !showQuota && !cameraError && (
         <div className="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center p-6">
           <div className="relative w-64 h-80 sm:w-72 sm:h-96 rounded-2xl border-2 border-dashed border-amber-400/60 flex items-center justify-center">
             {/* Viewfinder Corners */}
@@ -377,11 +457,20 @@ export default function ARView({ onExit }: ARViewProps) {
         </div>
       )}
 
-      {/* Camera Access Error Alert */}
+      {/* Interactive Camera Notice Alert with Retry Action */}
       {cameraError && (
-        <div className="absolute bottom-6 inset-x-4 max-w-md mx-auto z-30 bg-red-950/95 border border-red-700 p-4 rounded-2xl text-center backdrop-blur-md text-red-200 text-xs shadow-2xl">
-          <p className="font-bold text-red-100 mb-1">Camera Permission Notice / కెమెరా అనుమతి అవసరం</p>
-          <p>{cameraError}</p>
+        <div className="absolute bottom-6 inset-x-4 max-w-md mx-auto z-30 bg-red-950/95 border border-red-700 p-5 rounded-2xl text-center backdrop-blur-md text-red-200 text-xs shadow-2xl space-y-3">
+          <div>
+            <p className="font-bold text-red-100 text-sm mb-1">Camera Stream Notice / కెమెరా సందేశం</p>
+            <p className="text-[11px] text-red-200/90">{cameraError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRetryCamera}
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95"
+          >
+            Retry Camera / కెమెరాను మళ్లీ ప్రారంభించండి
+          </button>
         </div>
       )}
 
