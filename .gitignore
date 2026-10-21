@@ -4,3 +4,8 @@ out/
 /.next/
 .DS_Store
 .env.local
+.env*.local
+*.tsbuildinfo
+test_*.mjs
+check_*.mjs
+

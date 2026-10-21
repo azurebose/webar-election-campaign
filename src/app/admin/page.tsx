@@ -53,6 +53,21 @@ export default function AdminPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [compiledBlob, setCompiledBlob] = useState<Blob | null>(null);
 
+  // Individual ward compilation state
+  const [compilingWardIdx, setCompilingWardIdx] = useState<number | null>(null);
+  const [wardCompileStatus, setWardCompileStatus] = useState<{
+    [idx: number]: { progress: number; status: string; done?: boolean };
+  }>({});
+
+  // Cloudflare R2 direct ingestion state
+  const [adminEmail, setAdminEmail] = useState<string>(
+    process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'admin@electioncampaign.org'
+  );
+  const [isUploadingToR2, setIsUploadingToR2] = useState<boolean>(false);
+  const [r2UploadProgress, setR2UploadProgress] = useState<number>(0);
+  const [r2StatusMessage, setR2StatusMessage] = useState<string>('');
+  const [r2UploadedAssets, setR2UploadedAssets] = useState<Array<{ name: string; url: string }>>([]);
+
   // Analytics states
   const [stats, setStats] = useState({
     scansUsed: 0,
@@ -75,6 +90,11 @@ export default function AdminPage() {
         setIsAuthenticated(true);
         sessionStorage.setItem('campaign_admin_auth', 'true');
         localStorage.setItem('campaign_admin_auth', 'true');
+      }
+
+      const savedAdminEmail = localStorage.getItem('campaign_admin_email');
+      if (savedAdminEmail) {
+        setAdminEmail(savedAdminEmail);
       }
 
       loadInitialWards();
@@ -217,14 +237,304 @@ export default function AdminPage() {
     });
   };
 
+  // Load MindAR compiler engine on demand from CDN if not already initialized
+  const loadMindARCompiler = async () => {
+    const win = window as any;
+    let CompilerClass = win.MINDAR?.IMAGE?.Compiler;
+    if (!CompilerClass) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load MindAR compiler from CDN'));
+        document.head.appendChild(script);
+      });
+      CompilerClass = (window as any).MINDAR?.IMAGE?.Compiler;
+    }
+    if (!CompilerClass) {
+      throw new Error('MindAR compiler could not be initialized.');
+    }
+    return CompilerClass;
+  };
+
+  // Helper to request pre-signed PUT URL from /api/admin/upload-url and execute direct S3 upload to Cloudflare R2
+  const uploadFileToR2 = async (
+    filename: string,
+    blob: Blob,
+    contentType: string,
+    customEmail?: string
+  ): Promise<string> => {
+    const emailToUse = (customEmail || adminEmail).trim() || 'admin@electioncampaign.org';
+    const res = await fetch('/api/admin/upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename,
+        contentType,
+        email: emailToUse,
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Upload authorization failed with HTTP ${res.status}`);
+    }
+
+    const { uploadUrl, publicUrl } = await res.json();
+
+    try {
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: blob,
+      });
+
+      if (!putRes.ok) {
+        throw new Error(`Direct S3 PUT to R2 for "${filename}" failed with HTTP ${putRes.status}`);
+      }
+    } catch (fetchErr: any) {
+      if (fetchErr.name === 'TypeError' || fetchErr.message === 'Failed to fetch') {
+        throw new Error(
+          `R2 CORS Policy Required: Cloudflare R2 blocked direct browser upload of "${filename}". Please enable CORS on your R2 bucket settings in Cloudflare Dashboard.`
+        );
+      }
+      throw fetchErr;
+    }
+
+    return publicUrl;
+  };
+
+  // Background/Smart compiler for multi-ward targets.mind combining all wards with valid images
+  const compileCombinedTargetsMind = async (currentWards: AdminWardState[], emailToUse: string) => {
+    const validWards = currentWards.filter((w) => !!w.markerUrl || !!w.imageFile);
+    if (validWards.length === 0) return null;
+
+    try {
+      const CompilerClass = await loadMindARCompiler();
+      const loadedImages: HTMLImageElement[] = [];
+      for (let i = 0; i < validWards.length; i++) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = validWards[i].markerUrl;
+        await new Promise((resolve, reject) => {
+          img.onload = () => resolve(true);
+          img.onerror = () => reject(new Error(`Failed to decode image for ${validWards[i].wardNumber}`));
+        });
+        loadedImages.push(img);
+      }
+
+      const compiler = new CompilerClass();
+      await compiler.compileImageTargets(loadedImages, () => {});
+      const exportedBuffer = await compiler.exportData();
+      const combinedBlob = new Blob([exportedBuffer], { type: 'application/octet-stream' });
+
+      await saveAssetBlob('targets.mind', combinedBlob);
+      setCompiledBlob(combinedBlob);
+      await uploadFileToR2('targets.mind', combinedBlob, 'application/octet-stream', emailToUse);
+      return combinedBlob;
+    } catch (e) {
+      console.warn('Background multi-target sync note:', e);
+      return null;
+    }
+  };
+
+  // Compile an INDIVIDUAL ward poster directly into its own target and sync to Cloudflare R2
+  const handleCompileSingleWard = async (idx: number) => {
+    const ward = wards[idx];
+    if (!ward) return;
+
+    if (!ward.markerUrl && !ward.imageFile) {
+      setErrorMessage(`Please upload a poster image for ${ward.wardNumber} before compiling.`);
+      return;
+    }
+
+    const emailToUse = adminEmail.trim() || 'admin@electioncampaign.org';
+    const wardNum = idx + 1;
+    setCompilingWardIdx(idx);
+    setWardCompileStatus((prev) => ({
+      ...prev,
+      [idx]: { progress: 10, status: 'Initializing compiler...', done: false }
+    }));
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      localStorage.setItem('campaign_admin_email', emailToUse);
+      const CompilerClass = await loadMindARCompiler();
+
+      setWardCompileStatus((prev) => ({
+        ...prev,
+        [idx]: { progress: 25, status: 'Decoding poster image...', done: false }
+      }));
+
+      // Decode the poster image
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = ward.markerUrl;
+      await new Promise((resolve, reject) => {
+        img.onload = () => resolve(true);
+        img.onerror = () => reject(new Error(`Failed to decode image for ${ward.wardNumber}`));
+      });
+
+      setWardCompileStatus((prev) => ({
+        ...prev,
+        [idx]: { progress: 40, status: 'Extracting keypoint pyramids...', done: false }
+      }));
+
+      // Compile single target
+      const compiler = new CompilerClass();
+      await compiler.compileImageTargets([img], (progress: number) => {
+        const p = 40 + Math.round(progress * 0.45);
+        setWardCompileStatus((prev) => ({
+          ...prev,
+          [idx]: { progress: p, status: `Compiling keypoints: ${Math.round(progress)}%`, done: false }
+        }));
+      });
+
+      setWardCompileStatus((prev) => ({
+        ...prev,
+        [idx]: { progress: 85, status: 'Exporting .mind tracking binary...', done: false }
+      }));
+
+      const exportedBuffer = await compiler.exportData();
+      const wardMindBlob = new Blob([exportedBuffer], { type: 'application/octet-stream' });
+
+      // 1. Save to local IndexedDB
+      await saveAssetBlob(`ward_target_${ward.id}.mind`, wardMindBlob);
+      if (idx === 0 || wards.length === 1) {
+        await saveAssetBlob('targets.mind', wardMindBlob);
+        setCompiledBlob(wardMindBlob);
+      }
+
+      let savedMarkerUrl = ward.markerUrl;
+      let savedVideoUrl = ward.videoUrl;
+
+      if (ward.imageFile) {
+        await saveAssetBlob(`ward_marker_${ward.id}.png`, ward.imageFile);
+        savedMarkerUrl = URL.createObjectURL(ward.imageFile);
+      }
+      if (ward.videoFile) {
+        await saveAssetBlob(`ward_video_${ward.id}.mp4`, ward.videoFile);
+        savedVideoUrl = URL.createObjectURL(ward.videoFile);
+      }
+
+      // 2. Upload dedicated ward target to Cloudflare R2
+      setWardCompileStatus((prev) => ({
+        ...prev,
+        [idx]: { progress: 90, status: 'Uploading target & media to Cloudflare R2...', done: false }
+      }));
+
+      await uploadFileToR2(
+        `ward_${wardNum}_targets.mind`,
+        wardMindBlob,
+        'application/octet-stream',
+        emailToUse
+      );
+      if (idx === 0) {
+        await uploadFileToR2('targets.mind', wardMindBlob, 'application/octet-stream', emailToUse);
+      }
+
+      // 3. Upload poster image to Cloudflare R2
+      let imageBlob: Blob | null = ward.imageFile || null;
+      if (!imageBlob && ward.markerUrl && ward.markerUrl.startsWith('blob:')) {
+        try {
+          const r = await fetch(ward.markerUrl);
+          if (r.ok) imageBlob = await r.blob();
+        } catch (e) {}
+      }
+      if (!imageBlob) {
+        imageBlob = await getAssetBlob(`ward_marker_${ward.id}.png`);
+      }
+      if (!imageBlob && ward.markerUrl && !ward.markerUrl.startsWith('http')) {
+        try {
+          const r = await fetch(ward.markerUrl);
+          if (r.ok) imageBlob = await r.blob();
+        } catch (e) {}
+      }
+
+      let markerCdnUrl = savedMarkerUrl;
+      if (imageBlob) {
+        markerCdnUrl = await uploadFileToR2(
+          `ward_${wardNum}_poster.png`,
+          imageBlob,
+          imageBlob.type || 'image/png',
+          emailToUse
+        );
+      }
+
+      // 4. Upload candidate speech video to Cloudflare R2
+      let videoCdnUrl = savedVideoUrl;
+      let videoBlob: Blob | null = ward.videoFile || null;
+      if (!videoBlob && ward.videoUrl && ward.videoUrl.startsWith('blob:')) {
+        try {
+          const r = await fetch(ward.videoUrl);
+          if (r.ok) videoBlob = await r.blob();
+        } catch (e) {}
+      }
+      if (!videoBlob) {
+        videoBlob = await getAssetBlob(`ward_video_${ward.id}.mp4`);
+      }
+      if (videoBlob) {
+        videoCdnUrl = await uploadFileToR2(
+          `ward_${wardNum}_speech.mp4`,
+          videoBlob,
+          videoBlob.type || 'video/mp4',
+          emailToUse
+        );
+      }
+
+      // 5. Update state & serializable configuration
+      const updatedWards = [...wards];
+      updatedWards[idx] = {
+        ...updatedWards[idx],
+        markerUrl: markerCdnUrl,
+        videoUrl: videoCdnUrl,
+      };
+      setWards(updatedWards);
+
+      const serializableWards = updatedWards.map((w, wIdx) => ({
+        id: w.id || `ward-${wIdx + 1}`,
+        wardNumber: w.wardNumber,
+        wardName: w.wardName,
+        candidateName: w.candidateName,
+        markerUrl: w.markerUrl,
+        videoUrl: w.videoUrl,
+      }));
+      await saveWardsConfig(serializableWards);
+
+      const jsonBlob = new Blob([JSON.stringify(serializableWards, null, 2)], { type: 'application/json' });
+      await uploadFileToR2('wards.json', jsonBlob, 'application/json', emailToUse);
+
+      // 6. Update combined multi-target targets.mind in background
+      await compileCombinedTargetsMind(updatedWards, emailToUse);
+
+      setWardCompileStatus((prev) => ({
+        ...prev,
+        [idx]: { progress: 100, status: 'Compiled & Synced to Cloudflare R2 ✓', done: true }
+      }));
+
+      setSuccessMessage(
+        `✓ ${ward.wardNumber} poster successfully compiled and synced to Cloudflare R2! Dedicated Voter AR Link: /?ward=${wardNum}`
+      );
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || `Failed to compile poster for ${ward.wardNumber}.`);
+      setWardCompileStatus((prev) => ({
+        ...prev,
+        [idx]: { progress: 0, status: 'Compilation failed', done: false }
+      }));
+    } finally {
+      setCompilingWardIdx(null);
+    }
+  };
+
   // Compile all wards into a single multi-target MindAR binary
   const handleCompileAllTargets = async () => {
-    // 1. Validation: check that every ward has a poster
-    for (let i = 0; i < wards.length; i++) {
-      if (!wards[i].markerUrl && !wards[i].imageFile) {
-        setErrorMessage(`Please upload a poster image for ${wards[i].wardNumber} before compiling.`);
-        return;
-      }
+    // Check that at least one ward has a poster
+    const readyWards = wards.filter((w) => !!w.markerUrl || !!w.imageFile);
+    if (readyWards.length === 0) {
+      setErrorMessage('Please upload at least one ward poster image before compiling.');
+      return;
     }
 
     try {
@@ -234,43 +544,24 @@ export default function AdminPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
 
-      // Verify MINDAR is available on window
-      const win = window as any;
-      let CompilerClass = win.MINDAR?.IMAGE?.Compiler;
+      const CompilerClass = await loadMindARCompiler();
 
-      if (!CompilerClass) {
-        setStatusMessage('Loading MindAR compiler engine (CDN)...');
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load MindAR compiler from CDN'));
-          document.head.appendChild(script);
-        });
-        CompilerClass = (window as any).MINDAR?.IMAGE?.Compiler;
-      }
-
-      if (!CompilerClass) {
-        throw new Error('MindAR compiler could not be initialized.');
-      }
-
-      setStatusMessage(`Decoding ${wards.length} ward poster image(s)...`);
+      setStatusMessage(`Decoding ${readyWards.length} ward poster image(s)...`);
       setCompileProgress(20);
 
-      // Decode all image objects
       const loadedImages: HTMLImageElement[] = [];
-      for (let i = 0; i < wards.length; i++) {
+      for (let i = 0; i < readyWards.length; i++) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.src = wards[i].markerUrl;
+        img.src = readyWards[i].markerUrl;
         await new Promise((resolve, reject) => {
           img.onload = () => resolve(true);
-          img.onerror = () => reject(new Error(`Failed to decode image for ${wards[i].wardNumber}`));
+          img.onerror = () => reject(new Error(`Failed to decode image for ${readyWards[i].wardNumber}`));
         });
         loadedImages.push(img);
       }
 
-      setStatusMessage(`Extracting multi-target keypoint pyramids for ${wards.length} wards...`);
+      setStatusMessage(`Extracting multi-target keypoint pyramids for ${readyWards.length} wards...`);
 
       const compiler = new CompilerClass();
       await compiler.compileImageTargets(loadedImages, (progress: number) => {
@@ -316,21 +607,156 @@ export default function AdminPage() {
         });
       }
 
-      // Save wards JSON configuration
       await saveWardsConfig(serializableWards);
-
       setCompiledBlob(mindBlob);
       setCompileProgress(100);
-      setStatusMessage(`All ${wards.length} Ward Posters compiled & published successfully!`);
-      setSuccessMessage(
-        `Successfully compiled ${wards.length} Ward Posters! Click "Download targets.mind" and "Download wards.json" below to save them for WhatsApp deployment.`
-      );
+
+      // Automatically sync compiled assets directly to Cloudflare R2 bucket
+      setStatusMessage('Compilation complete! Now uploading targets.mind and ward posters to Cloudflare R2...');
+      try {
+        await executeR2Upload(mindBlob, serializableWards);
+        setSuccessMessage(
+          `All ${readyWards.length} Ward Posters compiled AND uploaded directly to Cloudflare R2 bucket: election-campaign-assets! Zero-egress public CDN delivery is active.`
+        );
+      } catch (r2Err: any) {
+        console.warn('R2 auto-upload notice:', r2Err);
+        setSuccessMessage(
+          `Successfully compiled ${readyWards.length} Ward Posters! Click "🚀 1-Click Sync to Cloudflare R2" below to push them directly to your bucket.`
+        );
+      }
       setIsCompiling(false);
     } catch (err: any) {
       console.error(err);
       setErrorMessage(err.message || 'Error occurred while compiling multi-ward posters.');
       setIsCompiling(false);
     }
+  };
+
+  const executeR2Upload = async (customMindBlob?: Blob | null, currentWards?: any[]) => {
+    const emailToUse = adminEmail.trim() || 'admin@electioncampaign.org';
+    setIsUploadingToR2(true);
+    setErrorMessage(null);
+    setR2UploadProgress(5);
+    setR2StatusMessage('Requesting signed S3 upload URLs from /api/admin/upload-url...');
+
+    try {
+      localStorage.setItem('campaign_admin_email', emailToUse);
+
+      const uploadedList: Array<{ name: string; url: string }> = [];
+
+      // 1. Upload compiled targets.mind
+      let mindBlob = customMindBlob || compiledBlob;
+      if (!mindBlob) {
+        mindBlob = await getAssetBlob('targets.mind');
+      }
+      if (!mindBlob) {
+        throw new Error('Please click "Compile & Publish All Wards" first before uploading to R2.');
+      }
+
+      setR2StatusMessage('Step 1/3: Uploading compiled targets.mind to Cloudflare R2...');
+      setR2UploadProgress(20);
+      const targetsPublicUrl = await uploadFileToR2('targets.mind', mindBlob, 'application/octet-stream');
+      uploadedList.push({ name: 'targets.mind', url: targetsPublicUrl });
+
+      // 2. Upload each Ward Poster & Candidate Speech Video
+      const wardsToUpload = currentWards || wards;
+      const totalWards = wardsToUpload.length;
+      const updatedWardsConfig = [];
+
+      for (let i = 0; i < totalWards; i++) {
+        const w = wardsToUpload[i];
+        const wardNum = i + 1;
+        setR2StatusMessage(`Step 2/3: Uploading Ward ${wardNum} media assets (${i + 1}/${totalWards})...`);
+        setR2UploadProgress(20 + Math.round(((i + 1) / totalWards) * 60));
+
+        let markerCdnUrl = w.markerUrl;
+        let videoCdnUrl = w.videoUrl;
+
+        // Image poster upload
+        let imageBlob: Blob | null = w.imageFile || null;
+        if (!imageBlob && w.markerUrl && w.markerUrl.startsWith('blob:')) {
+          try {
+            const r = await fetch(w.markerUrl);
+            if (r.ok) imageBlob = await r.blob();
+          } catch (e) {}
+        }
+        if (!imageBlob) {
+          imageBlob = await getAssetBlob(`ward_marker_${w.id}.png`);
+        }
+        if (!imageBlob && w.markerUrl && !w.markerUrl.startsWith('http')) {
+          try {
+            const r = await fetch(w.markerUrl);
+            if (r.ok) imageBlob = await r.blob();
+          } catch (e) {}
+        }
+
+        if (imageBlob) {
+          const posterName = `ward_${wardNum}_poster.png`;
+          markerCdnUrl = await uploadFileToR2(posterName, imageBlob, imageBlob.type || 'image/png');
+          uploadedList.push({ name: `${w.wardNumber} Poster`, url: markerCdnUrl });
+        }
+
+        // Video upload
+        let videoBlob: Blob | null = w.videoFile || null;
+        if (!videoBlob && w.videoUrl && w.videoUrl.startsWith('blob:')) {
+          try {
+            const r = await fetch(w.videoUrl);
+            if (r.ok) videoBlob = await r.blob();
+          } catch (e) {}
+        }
+        if (!videoBlob) {
+          videoBlob = await getAssetBlob(`ward_video_${w.id}.mp4`);
+        }
+        if (!videoBlob && w.videoUrl && !w.videoUrl.startsWith('http')) {
+          try {
+            const r = await fetch(w.videoUrl);
+            if (r.ok) videoBlob = await r.blob();
+          } catch (e) {}
+        }
+
+        if (videoBlob) {
+          const videoName = `ward_${wardNum}_speech.mp4`;
+          videoCdnUrl = await uploadFileToR2(videoName, videoBlob, videoBlob.type || 'video/mp4');
+          uploadedList.push({ name: `${w.wardNumber} Speech Video`, url: videoCdnUrl });
+        }
+
+        updatedWardsConfig.push({
+          id: w.id || `ward-${wardNum}`,
+          wardNumber: w.wardNumber,
+          wardName: w.wardName,
+          candidateName: w.candidateName,
+          markerUrl: markerCdnUrl,
+          videoUrl: videoCdnUrl,
+        });
+      }
+
+      // 3. Upload published wards.json configuration to R2
+      setR2StatusMessage('Step 3/3: Publishing updated wards.json configuration to Cloudflare R2...');
+      setR2UploadProgress(92);
+      const jsonBlob = new Blob([JSON.stringify(updatedWardsConfig, null, 2)], { type: 'application/json' });
+      const wardsJsonPublicUrl = await uploadFileToR2('wards.json', jsonBlob, 'application/json');
+      uploadedList.push({ name: 'wards.json', url: wardsJsonPublicUrl });
+
+      setR2UploadedAssets(uploadedList);
+      setR2UploadProgress(100);
+      setR2StatusMessage('All campaign assets successfully synced to Cloudflare R2 CDN!');
+      setIsUploadingToR2(false);
+      return uploadedList;
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || 'Error occurred while uploading assets to Cloudflare R2.');
+      setIsUploadingToR2(false);
+      throw err;
+    }
+  };
+
+  const handleUploadAllToR2 = async () => {
+    try {
+      const uploaded = await executeR2Upload();
+      setSuccessMessage(
+        `Successfully uploaded ${uploaded.length} assets to Cloudflare R2 bucket: election-campaign-assets! Public zero-egress CDN is active.`
+      );
+    } catch (e) {}
   };
 
   const handleDownloadTargetsMind = async () => {
@@ -749,6 +1175,70 @@ export default function AdminPage() {
                       </label>
                     </div>
                   </div>
+
+                  {/* Individual Ward Compile & Sync Action Bar */}
+                  <div className="bg-black/40 border border-gray-800 rounded-xl p-2.5 flex flex-col sm:flex-row items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2 text-[11px] truncate w-full sm:w-auto">
+                      {wardCompileStatus[idx]?.done ? (
+                        <span className="text-emerald-400 font-semibold flex items-center space-x-1">
+                          <svg className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>Synced to Cloudflare R2</span>
+                        </span>
+                      ) : compilingWardIdx === idx ? (
+                        <span className="text-amber-300 font-medium flex items-center space-x-1.5 animate-pulse">
+                          <svg className="w-3.5 h-3.5 animate-spin text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          <span>{wardCompileStatus[idx]?.status || 'Compiling...'} ({wardCompileStatus[idx]?.progress || 0}%)</span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">
+                          Dedicated Target: <code className="text-amber-300/80 font-mono">ward_{idx + 1}_targets.mind</code>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                      {wardCompileStatus[idx]?.done && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `${window.location.origin}/?ward=${idx + 1}`;
+                            navigator.clipboard.writeText(url);
+                            alert(`Copied Ward ${idx + 1} Dedicated Voter AR Link:\n${url}`);
+                          }}
+                          className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-semibold transition-all flex items-center space-x-1"
+                          title="Copy dedicated AR URL for this ward"
+                        >
+                          <span>🔗 Copy AR Link</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleCompileSingleWard(idx)}
+                        disabled={compilingWardIdx !== null || isCompiling}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md ${
+                          compilingWardIdx === idx
+                            ? 'bg-amber-600/50 text-white cursor-wait'
+                            : compilingWardIdx !== null || isCompiling
+                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white active:scale-95 shadow-orange-900/30'
+                        }`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <span>
+                          {compilingWardIdx === idx
+                            ? `Compiling... ${wardCompileStatus[idx]?.progress || 0}%`
+                            : `⚡ Compile Poster`}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -795,6 +1285,135 @@ export default function AdminPage() {
               >
                 Revert to Default Alliance
               </button>
+            </div>
+
+            {/* Cloudflare R2 Direct Ingestion & Zero-Egress CDN Sync Card */}
+            <div className="bg-gradient-to-r from-orange-950/70 via-gray-950 to-amber-950/70 border border-orange-500/40 rounded-2xl p-5 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-1.5 rounded-lg bg-orange-500/20 text-orange-400 border border-orange-400/30">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center space-x-2">
+                      <span>Cloudflare R2 Direct Ingestion ($0 Egress CDN)</span>
+                      <span className="text-[10px] bg-orange-500/20 text-orange-300 border border-orange-400/40 px-2 py-0.5 rounded-full">
+                        Admin Only
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-orange-200/80">
+                      క్లౌడ్‌ఫ్లేర్ R2 స్టోరేజ్‌కు ఒకే క్లిక్‌తో ప్రచురించండి | Direct S3 Upload via Pre-Signed URLs
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-semibold text-gray-300 mb-1">
+                    Authorized Admin Email (Must match ADMIN_EMAIL in .env.local):
+                  </label>
+                  <input
+                    type="email"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    placeholder="admin@electioncampaign.org"
+                    disabled={isUploadingToR2}
+                    className="w-full px-3 py-2 bg-black/60 border border-orange-500/30 rounded-xl text-white placeholder-gray-500 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handleUploadAllToR2}
+                    disabled={isUploadingToR2}
+                    className={`w-full py-2.5 px-4 rounded-xl font-extrabold text-xs shadow-lg transition-all flex items-center justify-center space-x-2 active:scale-95 ${
+                      isUploadingToR2
+                        ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-orange-600 via-amber-500 to-orange-500 hover:from-orange-500 hover:to-amber-400 text-white shadow-orange-900/40'
+                    }`}
+                  >
+                    {isUploadingToR2 ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <span>Uploading... ({r2UploadProgress}%)</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <span>🚀 1-Click Sync to Cloudflare R2</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Upload Progress Bar */}
+              {isUploadingToR2 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-[11px] text-orange-200">
+                    <span>{r2StatusMessage}</span>
+                    <span className="font-mono font-bold">{r2UploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-black/60 rounded-full h-2 overflow-hidden border border-orange-500/20">
+                    <div
+                      className="bg-gradient-to-r from-orange-500 to-amber-400 h-2 transition-all duration-300"
+                      style={{ width: `${r2UploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Uploaded CDN Asset Links */}
+              {r2UploadedAssets.length > 0 && (
+                <div className="bg-black/50 border border-orange-500/30 rounded-xl p-3 space-y-2 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-400 flex items-center space-x-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Public CDN Assets Deployed ({r2UploadedAssets.length})</span>
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-mono">$0 Egress Active</span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                    {r2UploadedAssets.map((asset, idx) => (
+                      <div
+                        key={`r2-asset-${idx}`}
+                        className="flex items-center justify-between bg-gray-900/80 px-2.5 py-1.5 rounded-lg border border-gray-800 text-[10px]"
+                      >
+                        <span className="font-semibold text-gray-200 truncate mr-2">{asset.name}</span>
+                        <div className="flex items-center space-x-1.5 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(asset.url);
+                              alert(`Copied CDN URL: ${asset.url}`);
+                            }}
+                            className="text-amber-400 hover:text-amber-300 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 transition-colors"
+                          >
+                            Copy URL
+                          </button>
+                          <a
+                            href={asset.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gray-400 hover:text-white"
+                          >
+                            ↗
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Cloudflare & WhatsApp Production Deployment Pack Card */}

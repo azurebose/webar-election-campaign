@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Visitor sessions collection: tracks anonymous scan quota by device fingerprint
+    match /visitor_sessions/{fingerprint} {
+      // Allow anonymous visitors to read their current scan status
+      allow read: if true;
+      
+      // Allow writes/updates only if the resulting scan count does not exceed the free quota of 2
+      allow create, update: if request.resource.data.scan_count <= 2;
+      
+      // Prevent unauthorized deletion of session records
+      allow delete: if false;
+    }
+
+    // Voter profiles collection: stores authenticated voter credentials, unlimited scans, and pledges
+    match /voter_profiles/{uid} {
+      // Strictly restrict read and write access to the authenticated user matching their Firebase UID
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

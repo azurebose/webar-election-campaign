@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import QuotaModal from '@/components/QuotaModal';
 import WardPosterModal from '@/components/WardPosterModal';
 import { getAssetUrl, getWardsConfig, WardPoster } from '@/utils/idbStorage';
+import { getPublicAssetUrl } from '@/lib/r2';
+import { verifyAndIncrementScan, getVisitorFingerprint, recordVotePledge } from '@/lib/quota';
 
 interface ARViewProps {
   onExit?: () => void;
@@ -14,8 +16,8 @@ const DEFAULT_WARD: WardPoster = {
   wardNumber: 'Ward 1 / వార్డు 1',
   wardName: 'Official Alliance Poster',
   candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
-  markerUrl: '/sample_marker.png',
-  videoUrl: '/campaign_speech.mp4'
+  markerUrl: process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN ? getPublicAssetUrl('sample_marker.png') : '/sample_marker.png',
+  videoUrl: process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN ? getPublicAssetUrl('campaign_speech.mp4') : '/campaign_speech.mp4'
 };
 
 export default function ARView({ onExit }: ARViewProps) {
@@ -32,7 +34,10 @@ export default function ARView({ onExit }: ARViewProps) {
   const [wards, setWards] = useState<WardPoster[]>([DEFAULT_WARD]);
   const [isWardModalOpen, setIsWardModalOpen] = useState<boolean>(false);
   const [targetVersion] = useState<number>(Date.now());
-  const [targetSrc, setTargetSrc] = useState<string>(`/targets.mind?v=${Date.now()}`);
+  const [selectedWardNum, setSelectedWardNum] = useState<number | null>(null);
+  const [targetSrc, setTargetSrc] = useState<string>(
+    process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN ? getPublicAssetUrl('targets.mind') : `/targets.mind?v=${Date.now()}`
+  );
 
   // 1. Install WebRTC camera fallback polyfill for laptops/desktops/front webcams
   useEffect(() => {
@@ -58,12 +63,35 @@ export default function ARView({ onExit }: ARViewProps) {
     }
   }, []);
 
-  // 2. Load compiled targets.mind and multi-ward configuration from IndexedDB / Defaults
+  // 2. Load compiled targets.mind and multi-ward configuration from IndexedDB / Defaults / R2
   useEffect(() => {
     let active = true;
     async function loadCampaignAssets() {
       try {
-        const customTargets = await getAssetUrl('targets.mind', `/targets.mind?v=${targetVersion}`);
+        const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+        const requestedWardStr = urlParams?.get('ward');
+        const requestedWardNum = requestedWardStr ? parseInt(requestedWardStr, 10) : null;
+        const isSingleWard = !!(requestedWardNum && !isNaN(requestedWardNum));
+        if (isSingleWard) {
+          setSelectedWardNum(requestedWardNum);
+        }
+
+        let customTargets = '';
+        if (isSingleWard) {
+          const wardTargetKey = `ward_${requestedWardNum}_targets.mind`;
+          const defaultWardMindUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
+            ? getPublicAssetUrl(wardTargetKey)
+            : `/${wardTargetKey}?v=${targetVersion}`;
+          customTargets = await getAssetUrl(`ward_target_ward-${requestedWardNum}.mind`, defaultWardMindUrl);
+        }
+
+        if (!customTargets) {
+          const defaultMindUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
+            ? getPublicAssetUrl('targets.mind')
+            : `/targets.mind?v=${targetVersion}`;
+          customTargets = await getAssetUrl('targets.mind', defaultMindUrl);
+        }
+
         let resolvedWards = await getWardsConfig();
 
         // If no local IndexedDB configuration (e.g. voters opening from WhatsApp), fetch published /wards.json
@@ -86,9 +114,16 @@ export default function ARView({ onExit }: ARViewProps) {
           if (resolvedWards && resolvedWards.length > 0) {
             setWards(resolvedWards);
           } else {
-            // Fall back to default ward with any cached singular assets
-            const marker = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${targetVersion}`);
-            const speech = await getAssetUrl('campaign_speech.mp4', `/campaign_speech.mp4?v=${targetVersion}`);
+            // Fall back to default ward with any cached singular assets or R2 CDN assets
+            const defaultMarkerUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
+              ? getPublicAssetUrl('sample_marker.png')
+              : `/sample_marker.png?v=${targetVersion}`;
+            const defaultVideoUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
+              ? getPublicAssetUrl('campaign_speech.mp4')
+              : `/campaign_speech.mp4?v=${targetVersion}`;
+
+            const marker = await getAssetUrl('sample_marker.png', defaultMarkerUrl);
+            const speech = await getAssetUrl('campaign_speech.mp4', defaultVideoUrl);
             setWards([
               {
                 id: 'ward-1',
@@ -133,10 +168,19 @@ export default function ARView({ onExit }: ARViewProps) {
       pledgeBtn.setAttribute('material', 'color: #ffd700'); // Visual micro-feedback: swap to bright gold
     }
 
-    // Record pledge in localStorage and Supabase if configured
+    // 1. Record pledge in Firestore under voter_profiles/{uid}.pledged_to_vote = true
+    try {
+      await recordVotePledge(undefined, email);
+    } catch (e) {
+      console.warn('Firestore pledge sync notice:', e);
+    }
+
+    // 2. Record pledge in localStorage and Supabase if configured
     localStorage.setItem('voter_pledged', 'true');
-    const { syncPledgeToSupabase } = await import('@/utils/supabaseClient');
-    await syncPledgeToSupabase(email);
+    try {
+      const { syncPledgeToSupabase } = await import('@/utils/supabaseClient');
+      await syncPledgeToSupabase(email);
+    } catch (e) {}
 
     setTimeout(() => {
       window.location.href = 'https://example.com/signup';
@@ -148,7 +192,23 @@ export default function ARView({ onExit }: ARViewProps) {
     async (wardIdx: number) => {
       setActiveWardIndex(wardIdx);
 
-      // Play matching ward video and pause all others
+      // Verify scan quota in Firestore using device/session fingerprint
+      const fingerprint = getVisitorFingerprint();
+      const quotaAllowed = await verifyAndIncrementScan(fingerprint);
+
+      if (!quotaAllowed) {
+        // Exceeded 2 free scans: pause all playback and prompt magic-link authentication
+        wards.forEach((_, idx) => {
+          const vid = document.getElementById(`campaign-speech-video-${idx}`) as HTMLVideoElement | null;
+          if (vid) {
+            vid.pause();
+          }
+        });
+        setShowQuota(true);
+        return;
+      }
+
+      // Quota authorized: Play matching ward video and pause all others
       wards.forEach((_, idx) => {
         const vid = document.getElementById(`campaign-speech-video-${idx}`) as HTMLVideoElement | null;
         if (vid) {
@@ -161,30 +221,16 @@ export default function ARView({ onExit }: ARViewProps) {
         }
       });
 
-      // Verify scan quota
-      const currentScans = parseInt(localStorage.getItem('ar_scan_count') || '0', 10);
-      const authed = !!localStorage.getItem('auth_email');
-
-      if (currentScans >= 2 && !authed) {
-        const currentVid = document.getElementById(`campaign-speech-video-${wardIdx}`) as HTMLVideoElement | null;
-        if (currentVid) {
-          currentVid.pause();
-        }
-        setShowQuota(true);
-        return;
-      }
-
-      // Increment scan allowance once per detection
-      const nextScans = currentScans + 1;
-      localStorage.setItem('ar_scan_count', nextScans.toString());
-      setScanCount(nextScans);
+      // Increment scan allowance once per detection in local state
+      setScanCount((prev) => prev + 1);
 
       // Sync with Supabase if configured
+      const authed = !!localStorage.getItem('auth_email');
       if (authed) {
         const storedEmail = localStorage.getItem('auth_email');
         if (storedEmail) {
           const { syncUserToSupabase } = await import('@/utils/supabaseClient');
-          await syncUserToSupabase(storedEmail, nextScans);
+          await syncUserToSupabase(storedEmail);
         }
       }
     },
@@ -351,52 +397,74 @@ export default function ARView({ onExit }: ARViewProps) {
           />
 
           {/* Dynamic MindAR Target Anchors for each Ward Poster */}
-          {wards.map((ward, idx) => (
-            <a-entity
-              key={`target-anchor-${ward.id || idx}`}
-              id={`target-anchor-${idx}`}
-              mindar-image-target={`targetIndex: ${idx}`}
-            >
-              {/* Ward Candidate Speech Video Plane attached to poster */}
-              <a-video
-                src={`#campaign-speech-video-${idx}`}
-                position="0 0.1 0"
-                width="1"
-                height="0.65"
-                rotation="0 0 0"
-              />
+          {wards.map((ward, idx) => {
+            const isSingleWard = selectedWardNum !== null;
+            const targetWardIdx = selectedWardNum !== null ? selectedWardNum - 1 : idx;
+            if (isSingleWard && idx !== targetWardIdx) {
+              return null;
+            }
 
-              {/* Interactive 3D 'Pledge to Vote' Button with Anti-Jitter Z-offset */}
+            return (
               <a-entity
-                id="pledge-button"
-                className="clickable"
-                pledge-handler
-                geometry="primitive: box; width: 0.85; height: 0.2; depth: 0.02"
-                material="color: #dc2626; roughness: 0.25; metalness: 0.15"
-                position="0 -0.45 0.02"
+                key={`target-anchor-${ward.id || idx}`}
+                id={`target-anchor-${idx}`}
+                mindar-image-target={`targetIndex: ${isSingleWard ? 0 : idx}`}
               >
-                <a-text
-                  value="PLEDGE TO VOTE"
-                  align="center"
-                  position="0 0 0.02"
-                  width="2.6"
-                  color="#ffffff"
-                  font="kelsonsans"
+                {/* Ward Candidate Speech Video Plane attached to poster */}
+                <a-video
+                  src={`#campaign-speech-video-${idx}`}
+                  position="0 0.1 0"
+                  width="1"
+                  height="0.65"
+                  rotation="0 0 0"
                 />
+
+                {/* Interactive 3D 'Pledge to Vote' Button with Anti-Jitter Z-offset */}
+                <a-entity
+                  id="pledge-button"
+                  className="clickable"
+                  pledge-handler
+                  geometry="primitive: box; width: 0.85; height: 0.2; depth: 0.02"
+                  material="color: #dc2626; roughness: 0.25; metalness: 0.15"
+                  position="0 -0.45 0.02"
+                >
+                  <a-text
+                    value="PLEDGE TO VOTE"
+                    align="center"
+                    position="0 0 0.02"
+                    width="2.6"
+                    color="#ffffff"
+                    font="kelsonsans"
+                  />
+                </a-entity>
               </a-entity>
-            </a-entity>
-          ))}
+            );
+          })}
         </a-scene>
       </div>
 
-      {/* Top Left: Scan Quota Pill styled in Election Palette */}
-      <div className="absolute top-4 left-4 z-20 bg-gray-950/90 backdrop-blur-md px-4 py-2 rounded-full border border-amber-500/40 text-xs tracking-wider text-amber-100 shadow-xl flex items-center space-x-2">
-        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]" />
-        <span>
-          Scans Used: <strong className="text-amber-300 font-extrabold">{scanCount}</strong>{' '}
-          {isAuthenticated ? '(Unlimited)' : '/ 2 Free'}{' '}
-          <span className="text-[10px] text-amber-400/80 font-normal">(స్కాన్లు)</span>
-        </span>
+      {/* Top Left: Scan Quota Pill & Dedicated Ward Indicator */}
+      <div className="absolute top-4 left-4 z-20 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+        <div className="bg-gray-950/90 backdrop-blur-md px-4 py-2 rounded-full border border-amber-500/40 text-xs tracking-wider text-amber-100 shadow-xl flex items-center space-x-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]" />
+          <span>
+            Scans Used: <strong className="text-amber-300 font-extrabold">{scanCount}</strong>{' '}
+            {isAuthenticated ? '(Unlimited)' : '/ 2 Free'}{' '}
+            <span className="text-[10px] text-amber-400/80 font-normal">(స్కాన్లు)</span>
+          </span>
+        </div>
+
+        {selectedWardNum !== null && (
+          <div className="bg-orange-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-orange-500/50 text-[11px] font-bold text-orange-200 flex items-center space-x-2 shadow-xl">
+            <span>Ward {selectedWardNum} Dedicated AR</span>
+            <a
+              href="/"
+              className="text-[10px] text-amber-300 hover:text-white underline font-normal"
+            >
+              (Scan All Wards)
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Top Right Actions: View Ward Posters Modal & Exit */}
