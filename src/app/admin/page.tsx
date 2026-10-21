@@ -11,6 +11,7 @@ import {
   getWardsConfig,
   WardPoster
 } from '@/utils/idbStorage';
+import { getPublicAssetUrl } from '@/lib/r2';
 
 interface AdminWardState {
   id: string;
@@ -492,14 +493,25 @@ export default function AdminPage() {
       };
       setWards(updatedWards);
 
-      const serializableWards = updatedWards.map((w, wIdx) => ({
-        id: w.id || `ward-${wIdx + 1}`,
-        wardNumber: w.wardNumber,
-        wardName: w.wardName,
-        candidateName: w.candidateName,
-        markerUrl: w.markerUrl,
-        videoUrl: w.videoUrl,
-      }));
+      const serializableWards = updatedWards.map((w, wIdx) => {
+        const wardNum = wIdx + 1;
+        let marker = w.markerUrl;
+        let video = w.videoUrl;
+        if (!marker || marker.startsWith('blob:')) {
+          marker = getPublicAssetUrl(`ward_${wardNum}_poster.png`);
+        }
+        if (!video || video.startsWith('blob:')) {
+          video = getPublicAssetUrl(`ward_${wardNum}_speech.mp4`);
+        }
+        return {
+          id: w.id || `ward-${wardNum}`,
+          wardNumber: w.wardNumber,
+          wardName: w.wardName,
+          candidateName: w.candidateName,
+          markerUrl: marker,
+          videoUrl: video,
+        };
+      });
       await saveWardsConfig(serializableWards);
 
       const jsonBlob = new Blob([JSON.stringify(serializableWards, null, 2)], { type: 'application/json' });
@@ -720,13 +732,20 @@ export default function AdminPage() {
           uploadedList.push({ name: `${w.wardNumber} Speech Video`, url: videoCdnUrl });
         }
 
+        const posterUrl = markerCdnUrl && !markerCdnUrl.startsWith('blob:')
+          ? markerCdnUrl
+          : getPublicAssetUrl(`ward_${wardNum}_poster.png`);
+        const speechUrl = videoCdnUrl && !videoCdnUrl.startsWith('blob:')
+          ? videoCdnUrl
+          : getPublicAssetUrl(`ward_${wardNum}_speech.mp4`);
+
         updatedWardsConfig.push({
           id: w.id || `ward-${wardNum}`,
           wardNumber: w.wardNumber,
           wardName: w.wardName,
           candidateName: w.candidateName,
-          markerUrl: markerCdnUrl,
-          videoUrl: videoCdnUrl,
+          markerUrl: posterUrl,
+          videoUrl: speechUrl,
         });
       }
 
@@ -736,6 +755,9 @@ export default function AdminPage() {
       const jsonBlob = new Blob([JSON.stringify(updatedWardsConfig, null, 2)], { type: 'application/json' });
       const wardsJsonPublicUrl = await uploadFileToR2('wards.json', jsonBlob, 'application/json');
       uploadedList.push({ name: 'wards.json', url: wardsJsonPublicUrl });
+
+      setWards(updatedWardsConfig);
+      await saveWardsConfig(updatedWardsConfig);
 
       setR2UploadedAssets(uploadedList);
       setR2UploadProgress(100);

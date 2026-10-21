@@ -4,8 +4,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || '';
 const accessKeyId = process.env.R2_ACCESS_KEY_ID || '';
 const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
-export const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || '';
-export const R2_PUBLIC_DOMAIN = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN || '';
+export const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'election-campaign-assets';
+export const R2_PUBLIC_DOMAIN =
+  process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN || 'pub-2a862321b71a474f8dfa575716c82ab4.r2.dev';
 
 /**
  * Cloudflare R2 S3-Compatible Client

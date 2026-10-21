@@ -92,9 +92,28 @@ export default function ARView({ onExit }: ARViewProps) {
           customTargets = await getAssetUrl('targets.mind', defaultMindUrl);
         }
 
-        let resolvedWards = await getWardsConfig();
+        let resolvedWards: WardPoster[] | null = null;
 
-        // If no local IndexedDB configuration (e.g. voters opening from WhatsApp), fetch published /wards.json
+        // 1. Fetch live published configuration directly from Cloudflare R2 CDN
+        try {
+          const r2WardsUrl = getPublicAssetUrl('wards.json');
+          const cdnRes = await fetch(`${r2WardsUrl}?v=${targetVersion}`);
+          if (cdnRes.ok) {
+            const cdnData = await cdnRes.json();
+            if (Array.isArray(cdnData) && cdnData.length > 0) {
+              resolvedWards = cdnData;
+            }
+          }
+        } catch (e) {
+          console.warn('Could not load wards.json from R2 CDN:', e);
+        }
+
+        // 2. Fall back to local IndexedDB configuration
+        if (!resolvedWards || resolvedWards.length === 0) {
+          resolvedWards = await getWardsConfig();
+        }
+
+        // 3. Fall back to bundled /wards.json
         if (!resolvedWards || resolvedWards.length === 0) {
           try {
             const publicRes = await fetch(`/wards.json?v=${targetVersion}`);
@@ -105,8 +124,28 @@ export default function ARView({ onExit }: ARViewProps) {
               }
             }
           } catch (e) {
-            console.warn('Could not load public wards.json:', e);
+            console.warn('Could not load local wards.json:', e);
           }
+        }
+
+        // Sanitize any stale blob: URLs to public CDN URLs so remote mobile visitors never break
+        if (resolvedWards && resolvedWards.length > 0) {
+          resolvedWards = resolvedWards.map((w, wIdx) => {
+            const wardNum = wIdx + 1;
+            let marker = w.markerUrl;
+            let video = w.videoUrl;
+            if (!marker || marker.startsWith('blob:')) {
+              marker = getPublicAssetUrl(`ward_${wardNum}_poster.png`);
+            }
+            if (!video || video.startsWith('blob:')) {
+              video = getPublicAssetUrl(`ward_${wardNum}_speech.mp4`);
+            }
+            return {
+              ...w,
+              markerUrl: marker,
+              videoUrl: video
+            };
+          });
         }
 
         if (active) {
