@@ -948,32 +948,32 @@ export default function AdminPage() {
   // Admin Dashboard with Multi-Ward Studio
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans">
-      {/* Top Navigation Bar */}
-      <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-8 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white shadow-md">
+      {/* Top Navigation Bar: Fully Responsive */}
+      <header className="border-b border-gray-800 bg-gray-900/90 backdrop-blur-md sticky top-0 z-40 px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2">
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white shadow-md flex-shrink-0">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
           </div>
-          <div>
-            <h1 className="text-sm font-extrabold text-white tracking-wide flex items-center space-x-2">
-              <span>Campaign Admin Command Center</span>
-              <span className="text-[10px] bg-emerald-950 border border-emerald-500/40 text-emerald-400 px-2 py-0.5 rounded-full font-bold">
-                MULTI-WARD ACTIVE ({wards.length})
+          <div className="min-w-0">
+            <h1 className="text-xs sm:text-sm font-extrabold text-white tracking-wide flex items-center space-x-1.5 flex-wrap">
+              <span className="truncate">Admin Command Center</span>
+              <span className="text-[9px] sm:text-[10px] bg-emerald-950 border border-emerald-500/40 text-emerald-400 px-2 py-0.5 rounded-full font-bold">
+                {wards.length} Wards Active
               </span>
             </h1>
-            <p className="text-[10px] text-amber-400/80">ఎన్నికల ప్రచార అడ్మిన్ పోర్టల్ — Bose Kodelli</p>
+            <p className="text-[9px] sm:text-[10px] text-amber-400/80 truncate">ఎన్నికల ప్రచార అడ్మిన్ పోర్టల్ — Bose Kodelli</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
           <Link
             href="/"
             target="_blank"
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-amber-300 text-xs font-semibold border border-amber-500/30 transition-all shadow-sm"
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-amber-300 text-[11px] sm:text-xs font-semibold border border-amber-500/30 transition-all shadow-sm"
           >
-            <span>Open Voter AR View</span>
+            <span>Voter AR</span>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
@@ -982,7 +982,7 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={handleLogout}
-            className="px-3 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-700/50 text-red-300 text-xs font-semibold transition-all"
+            className="px-2.5 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-700/50 text-red-300 text-[11px] sm:text-xs font-semibold transition-all"
           >
             Logout
           </button>
@@ -990,106 +990,116 @@ export default function AdminPage() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 lg:p-6 space-y-4">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 lg:p-6 space-y-3.5">
         {/* Banner Alert for Status */}
         {successMessage && (
-          <div className="bg-emerald-950/80 border border-emerald-500 p-3 rounded-2xl text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
-            <div className="flex items-center space-x-2">
+          <div className="bg-emerald-950/80 border border-emerald-500 p-3 rounded-xl text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
+            <div className="flex items-center space-x-2 truncate">
               <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
-              <span>{successMessage}</span>
+              <span className="truncate">{successMessage}</span>
             </div>
-            <button type="button" onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-white ml-2">✕</button>
+            <button type="button" onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-white ml-2 flex-shrink-0">✕</button>
           </div>
         )}
 
         {errorMessage && (
-          <div className="bg-red-950/80 border border-red-500 p-3 rounded-2xl text-red-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
-            <span>{errorMessage}</span>
-            <button type="button" onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-white ml-2">✕</button>
+          <div className="bg-red-950/80 border border-red-500 p-3 rounded-xl text-red-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
+            <span className="truncate">{errorMessage}</span>
+            <button type="button" onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-white ml-2 flex-shrink-0">✕</button>
           </div>
         )}
 
-        {/* Quick Vitals Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Local Scans Logged</p>
-              <p className="text-xl font-black text-amber-400 mt-0.5">{stats.scansUsed}</p>
+        {/* Compact 3-Column Vitals Strip */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-gray-900/70 border border-gray-800 rounded-xl p-2 sm:p-2.5 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Local Scans</p>
+              <p className="text-sm sm:text-lg font-black text-amber-400 mt-0.5">{stats.scansUsed}</p>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            </div>
+            <span className="text-amber-400 text-xs hidden sm:inline">👁️</span>
           </div>
 
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Active Wards Supported</p>
-              <p className="text-xs sm:text-sm font-bold text-emerald-400 mt-1 flex items-center space-x-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>{wards.length} Wards Configured</span>
+          <div className="bg-gray-900/70 border border-gray-800 rounded-xl p-2 sm:p-2.5 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Wards</p>
+              <p className="text-xs sm:text-sm font-bold text-emerald-400 mt-1 truncate">
+                {wards.length} Configured
               </p>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
           </div>
 
-          <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Public Permissions</p>
-              <p className="text-xs sm:text-sm font-bold text-orange-400 mt-1">Uploads Restricted to Admin Only</p>
+          <div className="bg-gray-900/70 border border-gray-800 rounded-xl p-2 sm:p-2.5 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-wider truncate">Permissions</p>
+              <p className="text-xs sm:text-sm font-bold text-orange-400 mt-1 truncate">Admin Only</p>
             </div>
-            <div className="w-8 h-8 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
+            <span className="text-orange-400 text-xs hidden sm:inline">🔒</span>
           </div>
         </div>
 
-        {/* Studio Layout: 2 Columns */}
+        {/* Studio Layout: 2 Columns on Desktop, Single Clean Column on Mobile */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left Column: Multi-Ward Editor & Compiler */}
-          <div className="lg:col-span-7 bg-gray-900/80 border border-gray-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col space-y-4">
-            <div className="border-b border-gray-800 pb-3 flex items-center justify-between">
+          <div className="lg:col-span-7 bg-gray-900/80 border border-gray-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-xl flex flex-col space-y-3.5">
+            <div className="border-b border-gray-800 pb-2.5 flex items-center justify-between gap-2 flex-wrap">
               <div>
-                <h2 className="text-base font-extrabold text-white flex items-center space-x-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <h2 className="text-sm sm:text-base font-extrabold text-white flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
                   <span>Multi-Ward Campaign Poster Studio</span>
                 </h2>
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  Manage different candidate posters for each ward. When compiled, voters in each ward can scan their respective poster to watch the speech.
+                <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5">
+                  Upload candidate posters & speech videos. Click compile to generate AR tracking.
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={handleAddWard}
-                className="bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center space-x-1"
+                className="bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center space-x-1 active:scale-95 flex-shrink-0"
               >
                 <span>+ Add Ward</span>
               </button>
             </div>
 
-            {/* List of Wards */}
-            <div className="space-y-3.5 max-h-[460px] overflow-y-auto pr-1 scrollbar-thin">
-              {wards.map((ward, idx) => (
-                <div
-                  key={ward.id}
-                  className={`bg-gray-950/80 border rounded-2xl p-3.5 space-y-3 transition-all ${
-                    selectedPreviewIdx === idx ? 'border-amber-400/80 shadow-md' : 'border-gray-800'
+            {/* Quick Ward Navigation Tabs */}
+            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-thin">
+              {wards.map((w, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPreviewIdx(idx);
+                    const el = document.getElementById(`ward-card-${idx}`);
+                    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }}
+                  className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all ${
+                    selectedPreviewIdx === idx
+                      ? 'bg-amber-500 text-gray-950 shadow-md font-extrabold'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                   }`}
                 >
-                  <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-extrabold flex items-center justify-center">
+                  {w.wardNumber || `Ward ${idx + 1}`}
+                </button>
+              ))}
+            </div>
+
+            {/* List of Wards: Full Height (No Nested Scroll Trap) */}
+            <div className="space-y-4">
+              {wards.map((ward, idx) => (
+                <div
+                  id={`ward-card-${idx}`}
+                  key={ward.id}
+                  className={`bg-gray-950/90 border rounded-2xl p-3 sm:p-4 space-y-3 transition-all ${
+                    selectedPreviewIdx === idx ? 'border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]' : 'border-gray-800'
+                  }`}
+                >
+                  {/* Ward Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-2">
+                    <div className="flex items-center space-x-2 flex-1 min-w-[200px]">
+                      <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-extrabold flex items-center justify-center flex-shrink-0">
                         {idx + 1}
                       </span>
                       <input
@@ -1097,26 +1107,26 @@ export default function AdminPage() {
                         value={ward.wardNumber}
                         onChange={(e) => handleUpdateWardField(idx, 'wardNumber', e.target.value)}
                         placeholder="e.g. Ward 1 / వార్డు 1"
-                        className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs font-bold text-amber-300 w-36 outline-none focus:border-amber-400"
+                        className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs font-bold text-amber-300 w-28 sm:w-36 outline-none focus:border-amber-400"
                       />
                       <input
                         type="text"
                         value={ward.wardName}
                         onChange={(e) => handleUpdateWardField(idx, 'wardName', e.target.value)}
-                        placeholder="Ward Area / Name"
-                        className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs text-gray-200 w-36 sm:w-44 outline-none focus:border-amber-400"
+                        placeholder="Ward Area Name"
+                        className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs text-gray-200 flex-1 min-w-[100px] outline-none focus:border-amber-400"
                       />
                     </div>
 
-                    <div className="flex items-center space-x-1.5">
+                    <div className="flex items-center space-x-1.5 flex-shrink-0">
                       <button
                         type="button"
                         onClick={() => setSelectedPreviewIdx(idx)}
-                        className={`text-[10px] px-2 py-0.5 rounded-md font-semibold ${
-                          selectedPreviewIdx === idx ? 'bg-amber-400 text-gray-950' : 'bg-gray-800 text-gray-300'
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-all ${
+                          selectedPreviewIdx === idx ? 'bg-amber-400 text-gray-950 font-bold' : 'bg-gray-800 text-gray-300'
                         }`}
                       >
-                        Preview
+                        {selectedPreviewIdx === idx ? 'Selected' : 'Select'}
                       </button>
                       {wards.length > 1 && (
                         <button
@@ -1133,7 +1143,7 @@ export default function AdminPage() {
 
                   {/* Ward Candidate Name */}
                   <div className="flex items-center space-x-2 text-xs">
-                    <span className="text-[11px] text-gray-400 w-24">Candidate:</span>
+                    <span className="text-[11px] text-gray-400 w-20 flex-shrink-0">Candidate:</span>
                     <input
                       type="text"
                       value={ward.candidateName}
@@ -1143,70 +1153,109 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  {/* File Pickers for this Ward */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {/* Poster Picker */}
-                    <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-2.5 flex items-center justify-between">
-                      <div className="flex items-center space-x-2 truncate">
+                  {/* PROMINENT MEDIA ROW: Visual Poster Preview (Left) & Speech Video (Right) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    {/* Poster Card with Large Image Preview */}
+                    <div className="bg-gray-900/90 border border-amber-500/30 rounded-xl p-2.5 flex flex-col space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-extrabold text-amber-300 flex items-center space-x-1">
+                          <span>🖼️ 1. Ward Poster Image</span>
+                          <span className="text-red-400">*</span>
+                        </span>
+                        {ward.markerUrl && (
+                          <a
+                            href={ward.markerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-amber-400 hover:underline"
+                          >
+                            Full Size ↗
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Prominent Poster Thumbnail */}
+                      <div className="w-full h-36 sm:h-40 bg-black/80 rounded-lg border border-gray-800 flex items-center justify-center overflow-hidden p-1 relative">
                         {ward.markerUrl ? (
                           <img
                             src={ward.markerUrl}
-                            alt="thumb"
-                            className="w-10 h-10 rounded-lg object-contain bg-black border border-amber-400/30 flex-shrink-0"
+                            alt={ward.wardNumber}
+                            className="w-full h-full object-contain rounded"
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-[10px] text-gray-500 flex-shrink-0">
-                            Poster
+                          <div className="flex flex-col items-center justify-center text-center p-2 text-gray-500">
+                            <svg className="w-7 h-7 text-gray-600 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className="text-[10px] text-amber-300/80 font-semibold">No Poster Image</span>
+                            <span className="text-[9px] text-gray-500">Upload JPG or PNG</span>
                           </div>
                         )}
-                        <span className="text-[11px] text-gray-300 truncate">
-                          {ward.imageFile ? ward.imageFile.name : 'Poster Image'}
-                        </span>
                       </div>
 
-                      <label className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 px-2 py-1 rounded-lg font-semibold cursor-pointer flex-shrink-0 ml-2">
-                        <span>Upload</span>
-                        <input
-                          type="file"
-                          accept="image/png, image/jpeg, image/jpg"
-                          onChange={(e) => handleWardImageUpload(idx, e)}
-                          className="hidden"
-                        />
-                      </label>
+                      {/* File name & Upload Button */}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] text-gray-400 truncate flex-1">
+                          {ward.imageFile ? ward.imageFile.name : (ward.markerUrl ? 'Active Poster' : 'Choose file')}
+                        </span>
+                        <label className="text-[10px] bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-all active:scale-95 flex-shrink-0">
+                          <span>{ward.markerUrl ? 'Change Poster' : 'Upload Poster'}</span>
+                          <input
+                            type="file"
+                            accept="image/png, image/jpeg, image/jpg"
+                            onChange={(e) => handleWardImageUpload(idx, e)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
 
-                    {/* Speech Video Picker */}
-                    <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-2.5 flex items-center justify-between">
-                      <div className="flex items-center space-x-2 truncate">
-                        <svg className="w-5 h-5 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="text-[11px] text-gray-300 truncate">
-                          {ward.videoFile ? ward.videoFile.name : 'Candidate Video'}
+                    {/* Speech Video Card */}
+                    <div className="bg-gray-900/90 border border-gray-800 rounded-xl p-2.5 flex flex-col space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-extrabold text-orange-300 flex items-center space-x-1">
+                          <span>🎥 2. Candidate Speech Video</span>
                         </span>
+                        <span className="text-[10px] text-gray-400">MP4</span>
                       </div>
 
-                      <label className="text-[10px] bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 px-2 py-1 rounded-lg font-semibold cursor-pointer flex-shrink-0 ml-2">
-                        <span>Change</span>
-                        <input
-                          type="file"
-                          accept="video/mp4, video/webm"
-                          onChange={(e) => handleWardVideoUpload(idx, e)}
-                          className="hidden"
+                      {/* Video Player Preview */}
+                      <div className="w-full h-36 sm:h-40 bg-black/80 rounded-lg border border-gray-800 flex items-center justify-center overflow-hidden">
+                        <video
+                          src={ward.videoUrl || '/campaign_speech.mp4'}
+                          controls
+                          playsInline
+                          className="w-full h-full object-contain"
                         />
-                      </label>
+                      </div>
+
+                      {/* File name & Change Button */}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] text-gray-400 truncate flex-1">
+                          {ward.videoFile ? ward.videoFile.name : 'Speech Video'}
+                        </span>
+                        <label className="text-[10px] bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 px-2.5 py-1 rounded-lg font-bold cursor-pointer transition-all active:scale-95 flex-shrink-0">
+                          <span>Change Video</span>
+                          <input
+                            type="file"
+                            accept="video/mp4, video/webm"
+                            onChange={(e) => handleWardVideoUpload(idx, e)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
                   </div>
 
                   {/* Individual Ward Compile & Sync Action Bar */}
-                  <div className="bg-black/40 border border-gray-800 rounded-xl p-2.5 flex flex-col sm:flex-row items-center justify-between gap-2">
-                    <div className="flex items-center space-x-2 text-[11px] truncate w-full sm:w-auto">
+                  <div className="bg-black/60 border border-amber-500/30 rounded-xl p-2.5 sm:p-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2 text-[11px] truncate min-w-0">
                       {wardCompileStatus[idx]?.done ? (
                         <span className="text-emerald-400 font-semibold flex items-center space-x-1">
                           <svg className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                           </svg>
-                          <span>Synced to Cloudflare R2</span>
+                          <span>Synced to Cloudflare R2 ✓</span>
                         </span>
                       ) : compilingWardIdx === idx ? (
                         <span className="text-amber-300 font-medium flex items-center space-x-1.5 animate-pulse">
@@ -1216,13 +1265,13 @@ export default function AdminPage() {
                           <span>{wardCompileStatus[idx]?.status || 'Compiling...'} ({wardCompileStatus[idx]?.progress || 0}%)</span>
                         </span>
                       ) : (
-                        <span className="text-gray-400">
-                          Dedicated Target: <code className="text-amber-300/80 font-mono">ward_{idx + 1}_targets.mind</code>
+                        <span className="text-gray-400 truncate">
+                          Target: <code className="text-amber-300/90 font-mono">ward_{idx + 1}_targets.mind</code>
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                    <div className="flex items-center space-x-2 flex-shrink-0">
                       {wardCompileStatus[idx]?.done && (
                         <button
                           type="button"
@@ -1231,7 +1280,7 @@ export default function AdminPage() {
                             navigator.clipboard.writeText(url);
                             alert(`Copied Ward ${idx + 1} Dedicated Voter AR Link:\n${url}`);
                           }}
-                          className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-semibold transition-all flex items-center space-x-1"
+                          className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] sm:text-xs font-semibold transition-all flex items-center space-x-1"
                           title="Copy dedicated AR URL for this ward"
                         >
                           <span>🔗 Copy AR Link</span>
@@ -1267,7 +1316,7 @@ export default function AdminPage() {
 
             {/* Compiler Progress Indicator */}
             {isCompiling && (
-              <div className="space-y-1.5 bg-black/60 border border-amber-500/40 p-3 rounded-2xl">
+              <div className="space-y-1.5 bg-black/60 border border-amber-500/40 p-3 rounded-xl">
                 <div className="flex justify-between text-xs text-amber-300 font-semibold">
                   <span>{statusMessage}</span>
                   <span>{compileProgress}%</span>
@@ -1282,7 +1331,7 @@ export default function AdminPage() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={handleCompileAllTargets}
@@ -1305,7 +1354,7 @@ export default function AdminPage() {
                 disabled={isCompiling}
                 className="w-full sm:w-auto py-2.5 px-3.5 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs font-semibold text-gray-300 transition-all active:scale-95"
               >
-                Revert to Default Alliance
+                Revert Default
               </button>
             </div>
 
