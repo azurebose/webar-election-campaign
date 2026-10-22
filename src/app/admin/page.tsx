@@ -45,6 +45,8 @@ export default function AdminPage() {
   // Multi-Ward Campaign Posters
   const [wards, setWards] = useState<AdminWardState[]>(DEFAULT_WARDS);
   const [selectedPreviewIdx, setSelectedPreviewIdx] = useState<number>(0);
+  const [viewMode, setViewMode] = useState<'tabs' | 'all'>('tabs');
+  const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
 
   // Compilation state
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
@@ -100,8 +102,40 @@ export default function AdminPage() {
 
       loadInitialWards();
       loadAnalytics();
+
+      const handleScroll = () => {
+        setShowScrollTop(window.scrollY > 250);
+      };
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      return () => window.removeEventListener('scroll', handleScroll);
     }
   }, []);
+
+  const scrollToWard = (idx: number) => {
+    setSelectedPreviewIdx(idx);
+    if (viewMode === 'all') {
+      setTimeout(() => {
+        const el = document.getElementById(`ward-card-${idx}`);
+        if (el) {
+          const yOffset = -70;
+          const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+        }
+      }, 60);
+    }
+  };
+
+  const scrollToTop = () => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToBottom = () => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+  };
 
   const loadInitialWards = async () => {
     const savedConfig = await getWardsConfig();
@@ -1055,91 +1089,156 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={handleAddWard}
-                className="bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center space-x-1 active:scale-95 flex-shrink-0"
-              >
-                <span>+ Add Ward</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                {/* View Mode Toggle */}
+                <div className="bg-gray-950 p-0.5 rounded-lg border border-gray-800 flex items-center text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('tabs')}
+                    className={`px-2 py-1 rounded font-semibold transition-all ${
+                      viewMode === 'tabs' ? 'bg-amber-500 text-gray-950 font-bold shadow-sm' : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Focus on one ward at a time"
+                  >
+                    Focus Tab
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('all')}
+                    className={`px-2 py-1 rounded font-semibold transition-all ${
+                      viewMode === 'all' ? 'bg-amber-500 text-gray-950 font-bold shadow-sm' : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Show all wards in scrollable list"
+                  >
+                    View All ({wards.length})
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddWard}
+                  className="bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center space-x-1 active:scale-95 flex-shrink-0"
+                >
+                  <span>+ Add Ward</span>
+                </button>
+              </div>
             </div>
 
             {/* Quick Ward Navigation Tabs */}
-            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-thin">
-              {wards.map((w, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    setSelectedPreviewIdx(idx);
-                    const el = document.getElementById(`ward-card-${idx}`);
-                    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                  }}
-                  className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all ${
-                    selectedPreviewIdx === idx
-                      ? 'bg-amber-500 text-gray-950 shadow-md font-extrabold'
-                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                  }`}
-                >
-                  {w.wardNumber || `Ward ${idx + 1}`}
-                </button>
-              ))}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-thin flex-1">
+                {wards.map((w, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => scrollToWard(idx)}
+                    className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all flex items-center space-x-1 ${
+                      selectedPreviewIdx === idx
+                        ? 'bg-amber-500 text-gray-950 shadow-md font-extrabold ring-2 ring-amber-400/50'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    <span>{w.wardNumber || `Ward ${idx + 1}`}</span>
+                    {selectedPreviewIdx === idx && <span className="text-[10px]">✓</span>}
+                  </button>
+                ))}
+              </div>
+
+              {/* In Tabs Mode: Quick Prev / Next Ward Switchers */}
+              {viewMode === 'tabs' && wards.length > 1 && (
+                <div className="flex items-center space-x-1 flex-shrink-0 bg-gray-950 px-2 py-0.5 rounded-lg border border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPreviewIdx((prev) => Math.max(0, prev - 1))}
+                    disabled={selectedPreviewIdx === 0}
+                    className="p-1 px-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 disabled:opacity-30 text-xs font-bold transition-all"
+                    title="Previous Ward / మునుపటి వార్డు"
+                  >
+                    ◀ Prev
+                  </button>
+                  <span className="text-[10px] text-amber-400 font-bold px-1 font-mono">
+                    {selectedPreviewIdx + 1}/{wards.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPreviewIdx((prev) => Math.min(wards.length - 1, prev + 1))}
+                    disabled={selectedPreviewIdx === wards.length - 1}
+                    className="p-1 px-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 disabled:opacity-30 text-xs font-bold transition-all"
+                    title="Next Ward / తదుపరి వార్డు"
+                  >
+                    Next ▶
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* List of Wards: Full Height (No Nested Scroll Trap) */}
+            {/* List of Wards: Clean & Fully Scrollable */}
             <div className="space-y-4">
-              {wards.map((ward, idx) => (
-                <div
-                  id={`ward-card-${idx}`}
-                  key={ward.id}
-                  className={`bg-gray-950/90 border rounded-2xl p-3 sm:p-4 space-y-3 transition-all ${
-                    selectedPreviewIdx === idx ? 'border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]' : 'border-gray-800'
-                  }`}
-                >
-                  {/* Ward Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-2">
-                    <div className="flex items-center space-x-2 flex-1 min-w-[200px]">
-                      <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-extrabold flex items-center justify-center flex-shrink-0">
-                        {idx + 1}
-                      </span>
-                      <input
-                        type="text"
-                        value={ward.wardNumber}
-                        onChange={(e) => handleUpdateWardField(idx, 'wardNumber', e.target.value)}
-                        placeholder="e.g. Ward 1 / వార్డు 1"
-                        className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs font-bold text-amber-300 w-28 sm:w-36 outline-none focus:border-amber-400"
-                      />
-                      <input
-                        type="text"
-                        value={ward.wardName}
-                        onChange={(e) => handleUpdateWardField(idx, 'wardName', e.target.value)}
-                        placeholder="Ward Area Name"
-                        className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs text-gray-200 flex-1 min-w-[100px] outline-none focus:border-amber-400"
-                      />
-                    </div>
+              {(viewMode === 'tabs' ? [wards[selectedPreviewIdx] || wards[0]] : wards).map((ward, mapIdx) => {
+                const idx = viewMode === 'tabs' ? selectedPreviewIdx : mapIdx;
+                return (
+                  <div
+                    id={`ward-card-${idx}`}
+                    key={ward.id || `ward-${idx}`}
+                    className={`bg-gray-950/90 border rounded-2xl p-3 sm:p-4 space-y-3 transition-all ${
+                      selectedPreviewIdx === idx ? 'border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]' : 'border-gray-800'
+                    }`}
+                  >
+                    {/* Ward Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800/80 pb-2">
+                      <div className="flex items-center space-x-2 flex-1 min-w-[200px]">
+                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-extrabold flex items-center justify-center flex-shrink-0">
+                          {idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={ward.wardNumber}
+                          onChange={(e) => handleUpdateWardField(idx, 'wardNumber', e.target.value)}
+                          placeholder="e.g. Ward 1 / వార్డు 1"
+                          className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs font-bold text-amber-300 w-28 sm:w-36 outline-none focus:border-amber-400"
+                        />
+                        <input
+                          type="text"
+                          value={ward.wardName}
+                          onChange={(e) => handleUpdateWardField(idx, 'wardName', e.target.value)}
+                          placeholder="Ward Area Name"
+                          className="bg-gray-900 border border-gray-700 px-2 py-1 rounded-lg text-xs text-gray-200 flex-1 min-w-[100px] outline-none focus:border-amber-400"
+                        />
+                      </div>
 
-                    <div className="flex items-center space-x-1.5 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPreviewIdx(idx)}
-                        className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-all ${
-                          selectedPreviewIdx === idx ? 'bg-amber-400 text-gray-950 font-bold' : 'bg-gray-800 text-gray-300'
-                        }`}
-                      >
-                        {selectedPreviewIdx === idx ? 'Selected' : 'Select'}
-                      </button>
-                      {wards.length > 1 && (
+                      <div className="flex items-center space-x-1.5 flex-shrink-0">
+                        {/* Quick Jump to Top button in All Wards mode */}
+                        {viewMode === 'all' && (
+                          <button
+                            type="button"
+                            onClick={scrollToTop}
+                            className="text-[10px] text-gray-400 hover:text-amber-300 px-2 py-0.5 rounded bg-gray-900 border border-gray-800 flex items-center space-x-0.5"
+                            title="Scroll to Top / పైకి వెళ్లండి"
+                          >
+                            <span>▲ Top</span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleRemoveWard(idx)}
-                          className="text-[10px] text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-950/40"
-                          title="Remove Ward"
+                          onClick={() => setSelectedPreviewIdx(idx)}
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-semibold transition-all ${
+                            selectedPreviewIdx === idx ? 'bg-amber-400 text-gray-950 font-bold' : 'bg-gray-800 text-gray-300'
+                          }`}
                         >
-                          ✕ Delete
+                          {selectedPreviewIdx === idx ? 'Selected' : 'Select'}
                         </button>
-                      )}
+                        {wards.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveWard(idx)}
+                            className="text-[10px] text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-950/40"
+                            title="Remove Ward"
+                          >
+                            ✕ Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
                   {/* Ward Candidate Name */}
                   <div className="flex items-center space-x-2 text-xs">
@@ -1311,7 +1410,8 @@ export default function AdminPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Compiler Progress Indicator */}
@@ -1610,6 +1710,21 @@ export default function AdminPage() {
           </div>
         </div>
       </main>
+
+      {/* Floating Scroll to Top Button */}
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          className="fixed bottom-5 right-5 z-50 p-2.5 sm:p-3 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-gray-950 font-black shadow-2xl border-2 border-amber-300 transition-all active:scale-90 flex items-center space-x-1.5 animate-in fade-in"
+          title="Scroll to Top / పైకి వెళ్ళండి"
+        >
+          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+          <span className="text-[11px] font-extrabold pr-1 hidden sm:inline">Top / పైకి</span>
+        </button>
+      )}
     </div>
   );
 }
