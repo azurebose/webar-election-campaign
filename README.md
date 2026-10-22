@@ -149,7 +149,7 @@ To allow direct browser uploads from the Admin Studio to your R2 bucket:
 npm run dev
 ```
 - Open `http://localhost:3000` to test the Voter AR experience.
-- Open `http://localhost:3000/admin` to access the Campaign Admin Command Center (passcode: `bose2026` or `admin2026`).
+- Open `http://localhost:3000/admin` to access the Campaign Admin Command Center (passcode: `bose@@2026`).
 
 ---
 

@@ -87,7 +87,7 @@ export default function AdminPage() {
         sessionStorage.getItem('campaign_admin_auth') === 'true' ||
         localStorage.getItem('campaign_admin_auth') === 'true';
 
-      if (savedAuth || isAutoAdmin || urlPin === 'bose2026' || urlPin === 'admin2026') {
+      if (savedAuth || isAutoAdmin || urlPin === 'bose@@2026') {
         setIsAuthenticated(true);
         sessionStorage.setItem('campaign_admin_auth', 'true');
         localStorage.setItem('campaign_admin_auth', 'true');
@@ -144,8 +144,8 @@ export default function AdminPage() {
   };
 
   const performLogin = (codeToTest?: string) => {
-    const code = (codeToTest !== undefined ? codeToTest : passcode).trim().toLowerCase();
-    if (code === 'admin2026' || code === 'bose2026' || code === 'bose') {
+    const code = (codeToTest !== undefined ? codeToTest : passcode).trim();
+    if (code === 'bose@@2026') {
       setIsAuthenticated(true);
       sessionStorage.setItem('campaign_admin_auth', 'true');
       localStorage.setItem('campaign_admin_auth', 'true');
