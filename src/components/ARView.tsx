@@ -28,6 +28,7 @@ export default function ARView({ onExit }: ARViewProps) {
   const [isPledged, setIsPledged] = useState<boolean>(false);
   const [activeWardIndex, setActiveWardIndex] = useState<number | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
 
   // Multi-Ward Configuration & Readiness
   const [isReady, setIsReady] = useState<boolean>(false);
@@ -38,6 +39,7 @@ export default function ARView({ onExit }: ARViewProps) {
   const [targetSrc, setTargetSrc] = useState<string>(
     process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN ? getPublicAssetUrl('targets.mind') : `/targets.mind?v=${Date.now()}`
   );
+
 
   // 1. Install WebRTC camera fallback polyfill for laptops/desktops/front webcams
   useEffect(() => {
@@ -226,6 +228,19 @@ export default function ARView({ onExit }: ARViewProps) {
     }, 1200);
   }, [isPledged]);
 
+  const toggleAudio = useCallback(() => {
+    if (activeWardIndex === null) return;
+    const vid = document.getElementById(`campaign-speech-video-${activeWardIndex}`) as HTMLVideoElement | null;
+    if (vid) {
+      const nextMuted = !vid.muted;
+      vid.muted = nextMuted;
+      setIsMuted(nextMuted);
+      if (!nextMuted) {
+        vid.play().catch(console.error);
+      }
+    }
+  }, [activeWardIndex]);
+
   // Handle detection of any ward poster
   const handleTargetFound = useCallback(
     async (wardIdx: number) => {
@@ -252,8 +267,17 @@ export default function ARView({ onExit }: ARViewProps) {
         const vid = document.getElementById(`campaign-speech-video-${idx}`) as HTMLVideoElement | null;
         if (vid) {
           if (idx === wardIdx) {
-            vid.currentTime = 0;
-            vid.play().catch((err) => console.log('Autoplay deferred:', err));
+            // Mobile browser safe autoplay: start muted if needed so mobile browsers never reject play()
+            vid.muted = isMuted;
+            const playPromise = vid.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((err) => {
+                console.warn('Autoplay with audio deferred on mobile, falling back to muted stream:', err);
+                vid.muted = true;
+                setIsMuted(true);
+                vid.play().catch((playErr) => console.log('Playback retry note:', playErr));
+              });
+            }
           } else {
             vid.pause();
           }
@@ -273,7 +297,7 @@ export default function ARView({ onExit }: ARViewProps) {
         }
       }
     },
-    [wards]
+    [wards, isMuted]
   );
 
   const handleTargetLost = useCallback(
@@ -412,17 +436,18 @@ export default function ARView({ onExit }: ARViewProps) {
           embedded
           style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
         >
-          {/* Preload Candidate Speech Videos for all Wards */}
-          <a-assets timeout="10000">
+          {/* Candidate Speech Videos for all Wards (preload="none" prevents network congestion) */}
+          <a-assets timeout="3000">
             {wards.map((ward, idx) => (
               <video
                 key={`vid-asset-${ward.id || idx}`}
                 id={`campaign-speech-video-${idx}`}
                 src={ward.videoUrl}
-                preload="auto"
+                preload="none"
                 playsInline
                 webkit-playsinline="true"
                 loop
+                muted={isMuted}
                 crossOrigin="anonymous"
               />
             ))}
@@ -482,97 +507,151 @@ export default function ARView({ onExit }: ARViewProps) {
         </a-scene>
       </div>
 
-      {/* Top Left: Scan Quota Pill & Dedicated Ward Indicator */}
-      <div className="absolute top-4 left-4 z-20 flex flex-col sm:flex-row items-start sm:items-center gap-2">
-        <div className="bg-gray-950/90 backdrop-blur-md px-4 py-2 rounded-full border border-amber-500/40 text-xs tracking-wider text-amber-100 shadow-xl flex items-center space-x-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]" />
-          <span>
-            Scans Used: <strong className="text-amber-300 font-extrabold">{scanCount}</strong>{' '}
-            {isAuthenticated ? '(Unlimited)' : '/ 2 Free'}{' '}
-            <span className="text-[10px] text-amber-400/80 font-normal">(స్కాన్లు)</span>
-          </span>
+      {/* Top Header Bar: Responsive Non-Colliding Navigation */}
+      <header className="absolute top-2.5 sm:top-4 inset-x-2.5 sm:inset-x-4 z-20 flex items-center justify-between gap-1.5 pointer-events-none">
+        {/* Left: Scan Quota Pill & Dedicated Ward Badge */}
+        <div className="pointer-events-auto flex items-center gap-1.5 flex-shrink-0">
+          <div className="bg-gray-950/90 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-amber-500/40 text-[11px] sm:text-xs tracking-wider text-amber-100 shadow-xl flex items-center space-x-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b] flex-shrink-0" />
+            <span className="whitespace-nowrap">
+              Scans: <strong className="text-amber-300 font-extrabold">{scanCount}</strong>{' '}
+              {isAuthenticated ? '(Unlimited)' : '/ 2 Free'}
+            </span>
+          </div>
+
+          {selectedWardNum !== null && (
+            <div className="bg-orange-950/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-orange-500/50 text-[10px] sm:text-[11px] font-bold text-orange-200 flex items-center space-x-1 shadow-xl">
+              <span>W{selectedWardNum}</span>
+              <a
+                href="/"
+                className="text-[9px] text-amber-300 hover:text-white underline font-normal ml-0.5"
+              >
+                (All)
+              </a>
+            </div>
+          )}
         </div>
 
-        {selectedWardNum !== null && (
-          <div className="bg-orange-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-orange-500/50 text-[11px] font-bold text-orange-200 flex items-center space-x-2 shadow-xl">
-            <span>Ward {selectedWardNum} Dedicated AR</span>
-            <a
-              href="/"
-              className="text-[10px] text-amber-300 hover:text-white underline font-normal"
-            >
-              (Scan All Wards)
-            </a>
-          </div>
-        )}
-      </div>
-
-      {/* Top Right Actions: View Ward Posters Modal & Exit */}
-      <div className="absolute top-4 right-4 z-20 flex items-center space-x-2">
-        <button
-          type="button"
-          onClick={() => setIsWardModalOpen(true)}
-          className="bg-gray-950/90 hover:bg-gray-900 backdrop-blur-md px-3.5 py-2 rounded-full border border-amber-500/40 text-xs font-semibold tracking-wide text-amber-300 hover:text-amber-200 flex items-center space-x-1.5 transition-all shadow-xl active:scale-95"
-          title="Browse all ward candidate posters"
-        >
-          <span>View Posters ({wards.length}) / పోస్టర్లు</span>
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
-        </button>
-
-        {onExit && (
+        {/* Right Actions: View Ward Posters Modal & Exit */}
+        <div className="pointer-events-auto flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
           <button
             type="button"
-            onClick={onExit}
-            className="bg-gray-950/90 hover:bg-red-950/80 backdrop-blur-md p-2 rounded-full border border-amber-500/40 hover:border-red-500 text-amber-300 hover:text-red-300 transition-all shadow-xl active:scale-95 flex items-center justify-center"
-            title="Exit AR View"
+            onClick={() => setIsWardModalOpen(true)}
+            className="bg-gray-950/90 hover:bg-gray-900 backdrop-blur-md px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full border border-amber-500/40 text-[11px] sm:text-xs font-semibold tracking-wide text-amber-300 hover:text-amber-200 flex items-center space-x-1 transition-all shadow-xl active:scale-95"
+            title="Browse all ward candidate posters"
           >
+            <span>Posters ({wards.length})</span>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
           </button>
-        )}
-      </div>
+
+          {onExit && (
+            <button
+              type="button"
+              onClick={onExit}
+              className="bg-gray-950/90 hover:bg-red-950/80 backdrop-blur-md p-1.5 sm:p-2 rounded-full border border-amber-500/40 hover:border-red-500 text-amber-300 hover:text-red-300 transition-all shadow-xl active:scale-95 flex items-center justify-center"
+              title="Exit AR View"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </header>
 
       {/* AR Scanning Reticle / Target Finder Viewport HUD in Amber-Orange Theme */}
       {activeWardIndex === null && !showQuota && !cameraError && (
-        <div className="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center p-6">
-          <div className="relative w-64 h-80 sm:w-72 sm:h-96 rounded-2xl border-2 border-dashed border-amber-400/60 flex items-center justify-center">
+        <div className="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center p-4">
+          <div className="relative w-[70vw] max-w-[270px] h-[36vh] max-h-[300px] rounded-2xl border-2 border-dashed border-amber-400/60 flex flex-col items-center justify-between p-3">
             {/* Viewfinder Corners */}
-            <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-amber-400 rounded-tl-lg" />
-            <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-amber-400 rounded-tr-lg" />
-            <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-amber-400 rounded-bl-lg" />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-amber-400 rounded-br-lg" />
+            <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-amber-400 rounded-tl-lg" />
+            <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-amber-400 rounded-tr-lg" />
+            <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-amber-400 rounded-bl-lg" />
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-amber-400 rounded-br-lg" />
 
             {/* Saffron-Gold laser scanning line */}
             <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_14px_#f59e0b] animate-scan-laser" />
 
-            <div className="bg-black/80 backdrop-blur-md px-4 py-2.5 rounded-xl border border-amber-500/40 text-center shadow-lg">
-              <p className="text-xs font-bold text-amber-300">Point at Any Ward Poster</p>
-              <p className="text-[11px] font-semibold text-amber-200/90 mt-0.5">ఏదైనా వార్డు పోస్టర్ వైపు చూపించండి</p>
+            <div />
+
+            {/* Guidance Badge */}
+            <div className="bg-black/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-amber-500/40 text-center shadow-lg pointer-events-auto">
+              <p className="text-xs font-bold text-amber-300">Point at Ward Poster</p>
+              <p className="text-[10px] font-semibold text-amber-200/90 mt-0.5">వార్డు పోస్టర్ వైపు చూపించండి</p>
             </div>
+          </div>
+
+          {/* Quick Helper Button below Reticle */}
+          <div className="mt-4 pointer-events-auto">
+            <button
+              type="button"
+              onClick={() => setIsWardModalOpen(true)}
+              className="bg-black/80 hover:bg-black/95 backdrop-blur-md px-4 py-2 rounded-full border border-amber-400/40 text-[11px] font-bold text-amber-200 hover:text-white flex items-center space-x-1.5 transition-all shadow-md active:scale-95"
+            >
+              <span>🖼️ View 7 Ward Posters / పోస్టర్లు</span>
+            </button>
           </div>
         </div>
       )}
 
-      {/* Ward Detected HUD Badge with Active Ward Details */}
+      {/* Interactive Mobile 2D Action HUD: Ward Info, Audio Toggle, and Direct Pledge Button */}
       {activeWard && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 max-w-[90vw] bg-gradient-to-r from-red-950/95 via-orange-950/95 to-amber-950/95 border border-amber-400/70 backdrop-blur-md px-5 py-2.5 rounded-full text-xs text-amber-200 font-bold tracking-wide flex items-center space-x-2.5 shadow-[0_0_25px_rgba(245,158,11,0.4)] animate-in fade-in zoom-in-95 duration-200">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399] flex-shrink-0" />
-          <span className="truncate">
-            🎯 <strong className="text-white">{activeWard.wardNumber}</strong>: {activeWard.wardName || 'Speech Playing!'} — {activeWard.candidateName}
-          </span>
+        <div className="absolute bottom-3 sm:bottom-6 inset-x-2 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-20 sm:max-w-md w-auto bg-gradient-to-r from-red-950/95 via-gray-900/95 to-amber-950/95 border border-amber-400/70 backdrop-blur-md p-3 sm:p-4 rounded-2xl sm:rounded-3xl text-amber-200 shadow-[0_0_30px_rgba(245,158,11,0.35)] flex flex-col space-y-2 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
+          {/* Active Ward Header Info & Audio Toggle */}
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center space-x-1.5 truncate">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399] flex-shrink-0" />
+              <div className="truncate">
+                <p className="text-xs sm:text-sm font-extrabold text-white truncate">
+                  🎯 {activeWard.wardNumber}: {activeWard.candidateName}
+                </p>
+                <p className="text-[9px] sm:text-[10px] text-amber-300/80 truncate">
+                  {activeWard.wardName || 'Candidate Speech Playing'}
+                </p>
+              </div>
+            </div>
+
+            {/* Audio Toggle Button with clear mobile prompt */}
+            <button
+              type="button"
+              onClick={toggleAudio}
+              className={`flex-shrink-0 px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border transition-all active:scale-95 flex items-center space-x-1 ${
+                isMuted
+                  ? 'bg-amber-500/25 text-amber-300 border-amber-400/60 hover:bg-amber-500/35 animate-pulse'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50'
+              }`}
+              title={isMuted ? 'Tap to unmute candidate speech' : 'Mute speech audio'}
+            >
+              <span>{isMuted ? '🔇 Unmute Sound' : '🔊 Sound On'}</span>
+            </button>
+          </div>
+
+          {/* Action Button: 2D Screen Touch Pledge to Vote */}
+          <button
+            type="button"
+            onClick={handlePledge}
+            disabled={isPledged}
+            className={`w-full py-2.5 px-3 sm:px-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm tracking-wide shadow-lg border transition-all flex items-center justify-center space-x-1.5 active:scale-95 ${
+              isPledged
+                ? 'bg-amber-500 text-gray-950 border-amber-300 shadow-amber-500/30'
+                : 'bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white border-amber-300/40 shadow-red-600/30'
+            }`}
+          >
+            <span>{isPledged ? '✓ PLEDGE RECORDED / ప్రతిజ్ఞ నమోదైంది' : '🗳️ PLEDGE TO VOTE / ఓటు వేస్తానని ప్రతిజ్ఞ చేయండి'}</span>
+          </button>
         </div>
       )}
 
       {/* Interactive Camera Notice Alert with Retry Action */}
       {cameraError && (
-        <div className="absolute bottom-6 inset-x-4 max-w-md mx-auto z-30 bg-red-950/95 border border-red-700 p-5 rounded-2xl text-center backdrop-blur-md text-red-200 text-xs shadow-2xl space-y-3">
+        <div className="absolute bottom-6 inset-x-3 max-w-md mx-auto z-30 bg-red-950/95 border border-red-700 p-4 sm:p-5 rounded-2xl text-center backdrop-blur-md text-red-200 text-xs shadow-2xl space-y-2.5 pointer-events-auto">
           <div>
             <p className="font-bold text-red-100 text-sm mb-1">Camera Stream Notice / కెమెరా సందేశం</p>
             <p className="text-[11px] text-red-200/90">{cameraError}</p>
@@ -592,21 +671,35 @@ export default function ARView({ onExit }: ARViewProps) {
         isOpen={isWardModalOpen}
         onClose={() => setIsWardModalOpen(false)}
         wards={wards}
+        onSelectWard={(wardIdx) => {
+          const wardNum = wardIdx + 1;
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('ward', wardNum.toString());
+            window.location.href = url.toString();
+          }
+        }}
       />
 
       {/* Zero-Button Passwordless Email Capture Modal */}
-      {showQuota && <QuotaModal onAuthenticated={handleAuthenticated} />}
+      {showQuota && (
+        <QuotaModal
+          onAuthenticated={handleAuthenticated}
+          onClose={() => setShowQuota(false)}
+        />
+      )}
 
       {/* Developer Attribution & Admin Command Link */}
-      <div className="absolute bottom-2.5 right-3.5 z-20 text-[10px] text-amber-200/50 font-medium tracking-wider select-none flex items-center space-x-1">
-        <span>Developed by / రూపొందించినది:</span>
-        <span className="text-amber-400 font-bold">Bose Kodelli</span>
+      <div className="absolute bottom-2 inset-x-2 z-10 text-[10px] text-amber-200/50 font-medium tracking-wider select-none flex items-center justify-between pointer-events-none">
+        <span className="truncate max-w-[70%]">
+          Developed by: <strong className="text-amber-400">Bose Kodelli</strong>
+        </span>
         <a
           href="/admin"
-          className="ml-1.5 text-amber-400/50 hover:text-amber-300 transition-colors pointer-events-auto p-0.5"
+          className="text-amber-400/50 hover:text-amber-300 transition-colors pointer-events-auto p-1"
           title="Campaign Admin Portal"
         >
-          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
