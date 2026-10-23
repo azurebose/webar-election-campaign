@@ -487,7 +487,7 @@ export default function ARView({ onExit }: ARViewProps) {
   // Show loading indicator until ward configuration is loaded to prevent double-mount
   if (!isReady) {
     return (
-      <div className="relative w-full h-screen overflow-hidden bg-transparent select-none flex flex-col items-center justify-center p-6 text-center">
+      <div className="relative w-full h-full h-[100dvh] overflow-hidden bg-transparent select-none flex flex-col items-center justify-center p-6 text-center">
         <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center mb-3 animate-spin">
           <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -500,7 +500,7 @@ export default function ARView({ onExit }: ARViewProps) {
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-transparent select-none">
+    <div className="relative w-full h-full h-[100dvh] overflow-hidden bg-transparent select-none">
       {/* MindAR A-Frame WebAR Scene Viewport */}
       <div ref={containerRef} className="w-full h-full absolute inset-0 z-0 bg-transparent">
         <a-scene
@@ -561,15 +561,15 @@ export default function ARView({ onExit }: ARViewProps) {
                   id={`pledge-button-${idx}`}
                   className="clickable pledge-btn"
                   pledge-handler
-                  geometry="primitive: box; width: 0.85; height: 0.2; depth: 0.02"
+                  geometry="primitive: box; width: 0.82; height: 0.16; depth: 0.02"
                   material="color: #dc2626; roughness: 0.25; metalness: 0.15"
-                  position="0 -0.45 0.02"
+                  position="0 -0.36 0.02"
                 >
                   <a-text
                     value="PLEDGE TO VOTE"
                     align="center"
                     position="0 0 0.02"
-                    width="2.6"
+                    width="2.3"
                     color="#ffffff"
                     font="kelsonsans"
                   />
@@ -581,7 +581,12 @@ export default function ARView({ onExit }: ARViewProps) {
       </div>
 
       {/* Top Header Bar: Responsive Non-Colliding Navigation */}
-      <header className="absolute top-2.5 sm:top-4 inset-x-2.5 sm:inset-x-4 z-20 flex items-center justify-between gap-1.5 pointer-events-none">
+      <header
+        style={{
+          top: 'max(0.75rem, env(safe-area-inset-top, 0px))',
+        }}
+        className="absolute inset-x-2.5 sm:inset-x-4 z-20 flex items-center justify-between gap-1.5 pointer-events-none"
+      >
         {/* Left: Scan Quota Pill & Dedicated Ward Badge */}
         <div className="pointer-events-auto flex items-center gap-1.5 flex-shrink-0">
           <div className="bg-gray-950/90 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-amber-500/40 text-[11px] sm:text-xs tracking-wider text-amber-100 shadow-xl flex items-center space-x-1.5">
@@ -676,7 +681,12 @@ export default function ARView({ onExit }: ARViewProps) {
 
       {/* Interactive Mobile 2D Action HUD: Ward Info, Audio Toggle, and Direct Pledge Button */}
       {activeWard && (
-        <div className="absolute bottom-3 sm:bottom-6 inset-x-2 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-20 sm:max-w-md w-auto bg-gradient-to-r from-red-950/95 via-gray-900/95 to-amber-950/95 border border-amber-400/70 backdrop-blur-md p-3 sm:p-4 rounded-2xl sm:rounded-3xl text-amber-200 shadow-[0_0_30px_rgba(245,158,11,0.35)] flex flex-col space-y-2 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto">
+        <div
+          style={{
+            bottom: 'max(4.25rem, calc(env(safe-area-inset-bottom, 0px) + 3.75rem))',
+          }}
+          className="absolute inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-20 sm:max-w-md w-auto bg-gradient-to-r from-red-950/95 via-gray-900/95 to-amber-950/95 border border-amber-400/80 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl text-amber-200 shadow-[0_0_30px_rgba(245,158,11,0.35)] flex flex-col space-y-2.5 animate-in fade-in zoom-in-95 duration-200 pointer-events-auto"
+        >
           {/* Active Ward Header Info & Audio Toggle */}
           <div className="flex items-center justify-between gap-1.5">
             <div className="flex items-center space-x-1.5 truncate">
@@ -695,7 +705,7 @@ export default function ARView({ onExit }: ARViewProps) {
             <button
               type="button"
               onClick={toggleAudio}
-              className={`flex-shrink-0 px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border transition-all active:scale-95 flex items-center space-x-1 ${
+              className={`flex-shrink-0 px-2.5 sm:px-3 py-1.5 rounded-full text-[10px] sm:text-[11px] font-bold border transition-all active:scale-95 flex items-center space-x-1 shadow-md ${
                 isMuted
                   ? 'bg-amber-500/25 text-amber-300 border-amber-400/60 hover:bg-amber-500/35 animate-pulse'
                   : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50'
@@ -711,7 +721,7 @@ export default function ARView({ onExit }: ARViewProps) {
             type="button"
             onClick={handlePledge}
             disabled={isPledged}
-            className={`w-full py-2.5 px-3 sm:px-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm tracking-wide shadow-lg border transition-all flex items-center justify-center space-x-1.5 active:scale-95 ${
+            className={`w-full py-3 px-3 sm:px-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm tracking-wide shadow-xl border transition-all flex items-center justify-center space-x-1.5 active:scale-95 ${
               isPledged
                 ? 'bg-amber-500 text-gray-950 border-amber-300 shadow-amber-500/30'
                 : 'bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white border-amber-300/40 shadow-red-600/30'
@@ -724,7 +734,12 @@ export default function ARView({ onExit }: ARViewProps) {
 
       {/* Interactive Camera Notice Alert with Retry Action */}
       {cameraError && (
-        <div className="absolute bottom-6 inset-x-3 max-w-md mx-auto z-30 bg-red-950/95 border border-red-700 p-4 sm:p-5 rounded-2xl text-center backdrop-blur-md text-red-200 text-xs shadow-2xl space-y-2.5 pointer-events-auto">
+        <div
+          style={{
+            bottom: 'max(4.5rem, calc(env(safe-area-inset-bottom, 0px) + 4rem))',
+          }}
+          className="absolute inset-x-3 max-w-md mx-auto z-30 bg-red-950/95 border border-red-700 p-4 sm:p-5 rounded-2xl text-center backdrop-blur-md text-red-200 text-xs shadow-2xl space-y-2.5 pointer-events-auto"
+        >
           <div>
             <p className="font-bold text-red-100 text-sm mb-1">Camera Stream Notice / కెమెరా సందేశం</p>
             <p className="text-[11px] text-red-200/90">{cameraError}</p>
@@ -763,7 +778,12 @@ export default function ARView({ onExit }: ARViewProps) {
       )}
 
       {/* Developer Attribution & Admin Command Link */}
-      <div className="absolute bottom-2 inset-x-2 z-10 text-[10px] text-amber-200/50 font-medium tracking-wider select-none flex items-center justify-between pointer-events-none">
+      <div
+        style={{
+          bottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
+        }}
+        className="absolute inset-x-3.5 z-10 text-[10px] text-amber-200/50 font-medium tracking-wider select-none flex items-center justify-between pointer-events-none"
+      >
         <span className="truncate max-w-[70%]">
           Developed by: <strong className="text-amber-400">Bose Kodelli</strong>
         </span>

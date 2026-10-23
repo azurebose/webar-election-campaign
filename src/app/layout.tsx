@@ -2,6 +2,14 @@ import Script from 'next/script';
 import './globals.css';
 import type { ReactNode } from 'react';
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+};
+
 export const metadata = {
   title: 'Election WebAR Portal - Vote for Development | అభివృద్ధికి ఓటు వేయండి',
   description: 'Welcome to Election WebAR Portal - Vote for Development | ఎన్నికల WebAR పోర్టల్‌కు స్వాగతం - అభివృద్ధికి ఓటు వేయండి. Developed by Bose Kodelli.',

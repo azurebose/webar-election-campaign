@@ -29,7 +29,7 @@ export default function Home() {
   };
 
   return (
-    <main className="w-screen h-screen fixed inset-0 overflow-hidden bg-black select-none">
+    <main className="w-full h-full h-[100dvh] fixed inset-0 overflow-hidden bg-black select-none">
       <ARView onExit={() => setHasStarted(false)} />
       {!hasStarted && (
         <StartOverlay onStart={handleStart} />
