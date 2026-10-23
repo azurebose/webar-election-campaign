@@ -10,16 +10,17 @@ export default function Home() {
   const [hasStarted, setHasStarted] = useState(false);
 
   const handleStart = () => {
-    // Prime mobile media playback pipeline during direct user gesture
+    // Prime mobile media playback pipeline for campaign speech videos ONLY (never touch camera stream video)
     if (typeof document !== 'undefined') {
-      const vids = document.querySelectorAll('video');
-      vids.forEach((v) => {
-        v.muted = true;
-        v.playsInline = true;
-        const p = v.play();
+      const speechVids = document.querySelectorAll('video[id^="campaign-speech-video-"]');
+      speechVids.forEach((v) => {
+        const videoEl = v as HTMLVideoElement;
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        const p = videoEl.play();
         if (p !== undefined) {
           p.then(() => {
-            v.pause();
+            videoEl.pause();
           }).catch(() => {});
         }
       });

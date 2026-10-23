@@ -224,15 +224,18 @@ export default function ARView({ onExit }: ARViewProps) {
     };
   }, [wards, activeWardIndex]);
 
+  const lostTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentActiveWardRef = useRef<number | null>(null);
+
   const handlePledge = useCallback(async () => {
     if (isPledged) return;
     setIsPledged(true);
 
     const email = localStorage.getItem('auth_email') || 'anonymous@voter.local';
-    const pledgeBtn = document.getElementById('pledge-button');
-    if (pledgeBtn) {
-      pledgeBtn.setAttribute('material', 'color: #ffd700'); // Visual micro-feedback: swap to bright gold
-    }
+    const pledgeBtns = document.querySelectorAll('.pledge-btn');
+    pledgeBtns.forEach((btn) => {
+      btn.setAttribute('material', 'color: #ffd700'); // Visual micro-feedback: swap to bright gold
+    });
 
     // 1. Record pledge in Firestore under voter_profiles/{uid}.pledged_to_vote = true
     try {
@@ -269,6 +272,22 @@ export default function ARView({ onExit }: ARViewProps) {
   // Handle detection of any ward poster
   const handleTargetFound = useCallback(
     async (wardIdx: number) => {
+      // 1. Cancel any pending lost timeout immediately
+      if (lostTimeoutRef.current) {
+        clearTimeout(lostTimeoutRef.current);
+        lostTimeoutRef.current = null;
+      }
+
+      // If already active on this exact ward, ensure video is playing and don't re-run quota/state
+      if (currentActiveWardRef.current === wardIdx) {
+        const vid = document.getElementById(`campaign-speech-video-${wardIdx}`) as HTMLVideoElement | null;
+        if (vid && vid.paused) {
+          vid.play().catch(() => {});
+        }
+        return;
+      }
+
+      currentActiveWardRef.current = wardIdx;
       setActiveWardIndex(wardIdx);
 
       // Verify scan quota in Firestore using device/session fingerprint
@@ -276,7 +295,7 @@ export default function ARView({ onExit }: ARViewProps) {
       const quotaAllowed = await verifyAndIncrementScan(fingerprint);
 
       if (!quotaAllowed) {
-        // Exceeded 2 free scans: pause all playback and prompt magic-link authentication
+        // Exceeded free scans: pause all playback and prompt modal
         wards.forEach((_, idx) => {
           const vid = document.getElementById(`campaign-speech-video-${idx}`) as HTMLVideoElement | null;
           if (vid) {
@@ -292,7 +311,6 @@ export default function ARView({ onExit }: ARViewProps) {
         const vid = document.getElementById(`campaign-speech-video-${idx}`) as HTMLVideoElement | null;
         if (vid) {
           if (idx === wardIdx) {
-            // Mobile browser safe autoplay: start muted if needed so mobile browsers never reject play()
             vid.muted = isMuted;
             const playPromise = vid.play();
             if (playPromise !== undefined) {
@@ -327,11 +345,19 @@ export default function ARView({ onExit }: ARViewProps) {
 
   const handleTargetLost = useCallback(
     (wardIdx: number) => {
-      const vid = document.getElementById(`campaign-speech-video-${wardIdx}`) as HTMLVideoElement | null;
-      if (vid) {
-        vid.pause();
+      // Debounce target lost by 1200ms to absorb hand tremors / minor tracking dropouts
+      if (lostTimeoutRef.current) {
+        clearTimeout(lostTimeoutRef.current);
       }
-      setActiveWardIndex((prev) => (prev === wardIdx ? null : prev));
+      lostTimeoutRef.current = setTimeout(() => {
+        const vid = document.getElementById(`campaign-speech-video-${wardIdx}`) as HTMLVideoElement | null;
+        if (vid) {
+          vid.pause();
+        }
+        setActiveWardIndex((prev) => (prev === wardIdx ? null : prev));
+        currentActiveWardRef.current = null;
+        lostTimeoutRef.current = null;
+      }, 1200);
     },
     []
   );
@@ -356,11 +382,19 @@ export default function ARView({ onExit }: ARViewProps) {
       AFRAME.registerComponent('video-texture-updater', {
         init: function () {
           this.mesh = this.el.getObject3D('mesh');
+          this.el.addEventListener('loaded', () => {
+            this.mesh = this.el.getObject3D('mesh');
+          });
         },
         tick: function () {
-          const mesh = this.mesh || this.el.getObject3D('mesh');
-          if (mesh && mesh.material && mesh.material.map) {
-            mesh.material.map.needsUpdate = true;
+          if (!this.mesh) {
+            this.mesh = this.el.getObject3D('mesh');
+          }
+          if (this.mesh && this.mesh.material) {
+            const mat = this.mesh.material;
+            if (mat.map) {
+              mat.map.needsUpdate = true;
+            }
           }
         }
       });
@@ -391,6 +425,10 @@ export default function ARView({ onExit }: ARViewProps) {
     }
 
     return () => {
+      if (lostTimeoutRef.current) {
+        clearTimeout(lostTimeoutRef.current);
+        lostTimeoutRef.current = null;
+      }
       attachedListeners.forEach(({ el, onFound, onLost }) => {
         el.removeEventListener('targetFound', onFound);
         el.removeEventListener('targetLost', onLost);
@@ -514,13 +552,14 @@ export default function ARView({ onExit }: ARViewProps) {
                   width="1"
                   height="0.65"
                   rotation="0 0 0"
+                  material="shader: flat; transparent: false; side: double"
                   video-texture-updater
                 />
 
                 {/* Interactive 3D 'Pledge to Vote' Button with Anti-Jitter Z-offset */}
                 <a-entity
-                  id="pledge-button"
-                  className="clickable"
+                  id={`pledge-button-${idx}`}
+                  className="clickable pledge-btn"
                   pledge-handler
                   geometry="primitive: box; width: 0.85; height: 0.2; depth: 0.02"
                   material="color: #dc2626; roughness: 0.25; metalness: 0.15"

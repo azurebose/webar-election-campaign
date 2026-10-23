@@ -73,59 +73,96 @@ export default {
             ? 'posters/' + url.pathname.replace('/api/asset/', '')
             : url.pathname.replace(/^\/+/, '');
 
-          const rangeHeader = request.headers.get('range');
-          let parsedRange = undefined;
-          if (rangeHeader && rangeHeader.startsWith('bytes=')) {
-            const parts = rangeHeader.slice(6).split('-');
-            if (parts[0] !== '' && parts[1] !== '') {
-              const start = parseInt(parts[0], 10);
-              const end = parseInt(parts[1], 10);
-              if (!isNaN(start) && !isNaN(end) && end >= start) {
-                parsedRange = { offset: start, length: end - start + 1 };
-              }
-            } else if (parts[0] !== '') {
-              const start = parseInt(parts[0], 10);
-              if (!isNaN(start)) {
-                parsedRange = { offset: start };
-              }
-            } else if (parts[1] !== '') {
-              const suffix = parseInt(parts[1], 10);
-              if (!isNaN(suffix)) {
-                parsedRange = { suffix };
-              }
-            }
-          }
-
-          let obj = null;
-          if (parsedRange) {
-            try {
-              obj = await env.R2_BUCKET.get(cleanKey, { range: parsedRange });
-            } catch (re) {}
-          }
-          if (!obj) {
-            obj = await env.R2_BUCKET.get(cleanKey);
-          }
-
-          if (obj) {
+          // Fast path for HEAD requests
+          if (request.method === 'HEAD') {
+            const headObj = await env.R2_BUCKET.head(cleanKey);
+            if (!headObj) return new Response('Not Found', { status: 404 });
             const headers = new Headers();
-            obj.writeHttpMetadata(headers);
+            headObj.writeHttpMetadata(headers);
             headers.set('Access-Control-Allow-Origin', '*');
             headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
             headers.set('Access-Control-Allow-Headers', '*');
             headers.set('Accept-Ranges', 'bytes');
-            if (cleanKey.endsWith('.mp4')) {
-              headers.set('Content-Type', 'video/mp4');
-            } else if (cleanKey.endsWith('.png')) {
-              headers.set('Content-Type', 'image/png');
-            } else if (cleanKey.endsWith('.mind')) {
-              headers.set('Content-Type', 'application/octet-stream');
-            }
-            headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-            const status = obj.range ? 206 : 200;
-            return new Response(obj.body, { headers, status });
+            headers.set('Content-Length', headObj.size.toString());
+            if (cleanKey.endsWith('.mp4')) headers.set('Content-Type', 'video/mp4');
+            else if (cleanKey.endsWith('.png')) headers.set('Content-Type', 'image/png');
+            else if (cleanKey.endsWith('.jpg') || cleanKey.endsWith('.jpeg')) headers.set('Content-Type', 'image/jpeg');
+            headers.set('Cache-Control', 'public, max-age=86400, must-revalidate');
+            return new Response(null, { headers, status: 200 });
           }
+
+          const rangeHeader = request.headers.get('range');
+
+          if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+            const headObj = await env.R2_BUCKET.head(cleanKey);
+            if (!headObj) return new Response('Not Found', { status: 404 });
+            const totalSize = headObj.size;
+
+            const parts = rangeHeader.slice(6).split('-');
+            let start = 0;
+            let end = totalSize - 1;
+
+            if (parts[0] === '' && parts[1]) {
+              // Suffix byte range: bytes=-500 (last 500 bytes)
+              const suffix = parseInt(parts[1], 10);
+              if (!isNaN(suffix)) {
+                start = Math.max(0, totalSize - suffix);
+              }
+            } else {
+              if (parts[0]) {
+                const s = parseInt(parts[0], 10);
+                if (!isNaN(s) && s >= 0) start = s;
+              }
+              if (parts[1]) {
+                const e = parseInt(parts[1], 10);
+                if (!isNaN(e) && e < totalSize && e >= start) end = e;
+              }
+            }
+
+            const length = end - start + 1;
+
+            const rangeObj = await env.R2_BUCKET.get(cleanKey, {
+              range: { offset: start, length }
+            });
+
+            if (!rangeObj) return new Response('Range Not Satisfiable', { status: 416 });
+
+            const headers = new Headers();
+            rangeObj.writeHttpMetadata(headers);
+            headers.set('Access-Control-Allow-Origin', '*');
+            headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            headers.set('Access-Control-Allow-Headers', '*');
+            headers.set('Accept-Ranges', 'bytes');
+            headers.set('Content-Range', `bytes ${start}-${end}/${totalSize}`);
+            headers.set('Content-Length', length.toString());
+            if (cleanKey.endsWith('.mp4')) headers.set('Content-Type', 'video/mp4');
+            else if (cleanKey.endsWith('.png')) headers.set('Content-Type', 'image/png');
+            else if (cleanKey.endsWith('.jpg') || cleanKey.endsWith('.jpeg')) headers.set('Content-Type', 'image/jpeg');
+            headers.set('Cache-Control', 'public, max-age=86400, must-revalidate');
+
+            return new Response(rangeObj.body, { headers, status: 206 });
+          }
+
+          // Full GET request without range: Return HTTP 200 with complete Content-Length
+          const fullObj = await env.R2_BUCKET.get(cleanKey);
+          if (!fullObj) return new Response('Not Found', { status: 404 });
+
+          const headers = new Headers();
+          fullObj.writeHttpMetadata(headers);
+          headers.set('Access-Control-Allow-Origin', '*');
+          headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+          headers.set('Access-Control-Allow-Headers', '*');
+          headers.set('Accept-Ranges', 'bytes');
+          headers.set('Content-Length', fullObj.size.toString());
+          if (cleanKey.endsWith('.mp4')) headers.set('Content-Type', 'video/mp4');
+          else if (cleanKey.endsWith('.png')) headers.set('Content-Type', 'image/png');
+          else if (cleanKey.endsWith('.jpg') || cleanKey.endsWith('.jpeg')) headers.set('Content-Type', 'image/jpeg');
+          headers.set('Cache-Control', 'public, max-age=86400, must-revalidate');
+
+          return new Response(fullObj.body, { headers, status: 200 });
         } catch (mediaErr) {
           console.error('Media stream error:', mediaErr);
+          return new Response('Media Streaming Error', { status: 500 });
         }
       }
 
