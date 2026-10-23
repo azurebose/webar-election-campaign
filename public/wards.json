@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "id": "ward-1",
+    "wardNumber": "Ward 1 / వార్డు 1",
+    "wardName": "Official Alliance Poster",
+    "candidateName": "NDA Alliance / బోస్ కొడెల్లి",
+    "markerUrl": "https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_1_poster.png",
+    "videoUrl": "https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_1_speech.mp4"
+  },
+  {
+    "id": "ward-1792723704555",
+    "wardNumber": "Ward 2 / వార్డు 2",
+    "wardName": "Ward 2 Area",
+    "candidateName": "Tdp",
+    "markerUrl": "https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_2_poster.png",
+    "videoUrl": "https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_2_speech.mp4"
+  },
+  {
+    "id": "ward-1792723972902",
+    "wardNumber": "Ward 3 / వార్డు 3",
+    "wardName": "Ward 3 Area",
+    "candidateName": "Ward 3 Candidate",
+    "markerUrl": "https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_3_poster.png",
+    "videoUrl": "https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_3_speech.mp4"
+  }
+]

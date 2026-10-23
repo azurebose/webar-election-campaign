@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { WardPoster } from '@/utils/idbStorage';
+import { WardPoster } from '@/types/campaign';
 
 interface WardPosterModalProps {
   isOpen: boolean;

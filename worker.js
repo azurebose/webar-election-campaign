@@ -39,7 +39,7 @@ export default {
 
     // 2.5 Live R2 dynamic asset streaming for wards.json & targets.mind
     if (env.R2_BUCKET) {
-      if (url.pathname === '/wards.json' || url.pathname === '/posters/wards.json') {
+      if (url.pathname === '/wards.json' || url.pathname === '/posters/wards.json' || url.pathname === '/api/wards') {
         const obj = await env.R2_BUCKET.get('posters/wards.json');
         if (obj) {
           const body = await obj.text();
@@ -53,7 +53,7 @@ export default {
         }
       }
 
-      if (url.pathname === '/targets.mind' || url.pathname === '/posters/targets.mind') {
+      if (url.pathname === '/targets.mind' || url.pathname === '/posters/targets.mind' || url.pathname === '/api/targets') {
         const obj = await env.R2_BUCKET.get('posters/targets.mind');
         if (obj) {
           return new Response(obj.body, {

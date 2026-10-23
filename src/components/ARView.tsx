@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import QuotaModal from '@/components/QuotaModal';
 import WardPosterModal from '@/components/WardPosterModal';
-import { getAssetUrl, getAssetBlob, getWardsConfig, WardPoster } from '@/utils/idbStorage';
+import { WardPoster } from '@/types/campaign';
 import { getPublicAssetUrl } from '@/lib/r2';
 import { verifyAndIncrementScan, getVisitorFingerprint, recordVotePledge } from '@/lib/quota';
 
@@ -16,8 +16,8 @@ const DEFAULT_WARD: WardPoster = {
   wardNumber: 'Ward 1 / వార్డు 1',
   wardName: 'Official Alliance Poster',
   candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
-  markerUrl: process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN ? getPublicAssetUrl('sample_marker.png') : '/sample_marker.png',
-  videoUrl: process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN ? getPublicAssetUrl('campaign_speech.mp4') : '/campaign_speech.mp4'
+  markerUrl: getPublicAssetUrl('ward_1_poster.png'),
+  videoUrl: getPublicAssetUrl('ward_1_speech.mp4')
 };
 
 export default function ARView({ onExit }: ARViewProps) {
@@ -30,17 +30,31 @@ export default function ARView({ onExit }: ARViewProps) {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState<boolean>(true);
 
-  // Multi-Ward Configuration & Readiness
+  // Multi-Ward Configuration & Readiness (Remotes Only)
   const [isReady, setIsReady] = useState<boolean>(false);
   const [wards, setWards] = useState<WardPoster[]>([DEFAULT_WARD]);
   const [isWardModalOpen, setIsWardModalOpen] = useState<boolean>(false);
   const [targetVersion] = useState<number>(Date.now());
   const [selectedWardNum, setSelectedWardNum] = useState<number | null>(null);
-  const [isDedicatedSingleTarget, setIsDedicatedSingleTarget] = useState<boolean>(false);
   const [targetSrc, setTargetSrc] = useState<string>(`/targets.mind?v=${Date.now()}`);
 
+  // 1. Purge legacy IndexedDB and obsolete caches so older phones fetch fresh remotes only
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.indexedDB?.deleteDatabase('WebARStorage');
+      } catch (e) {
+        console.warn('IDB purge note:', e);
+      }
+      try {
+        localStorage.removeItem('wards_config');
+        localStorage.removeItem('wards');
+        localStorage.removeItem('ar_assets');
+      } catch (e) {}
+    }
+  }, []);
 
-  // 1. Install WebRTC camera fallback polyfill for laptops/desktops/front webcams
+  // 2. Install WebRTC camera fallback polyfill for laptops/desktops/front webcams
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       const origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -64,70 +78,27 @@ export default function ARView({ onExit }: ARViewProps) {
     }
   }, []);
 
-  // 2. Load compiled targets.mind and multi-ward configuration from IndexedDB / Defaults / R2
+  // 3. Load compiled targets.mind and multi-ward configuration from Cloudflare R2 Remote CDN Only
   useEffect(() => {
     let active = true;
     async function loadCampaignAssets() {
       try {
         const nowTs = Date.now();
+        const r2Domain = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN || 'pub-2a862321b71a474f8dfa575716c82ab4.r2.dev';
         const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
         const requestedWardStr = urlParams?.get('ward');
         const requestedWardNum = requestedWardStr ? parseInt(requestedWardStr, 10) : null;
-        const isSingleWard = !!(requestedWardNum && !isNaN(requestedWardNum));
-        if (isSingleWard) {
-          setSelectedWardNum(requestedWardNum);
-        }
 
-        let customTargets = '';
-        let dedicatedSingle = false;
-
-        // A. If single ward requested, check for dedicated single-ward target
-        if (isSingleWard) {
-          const wardTargetKey = `ward_${requestedWardNum}_targets.mind`;
-          // Check IndexedDB
-          const idbTarget = await getAssetBlob(`ward_target_ward-${requestedWardNum}.mind`);
-          if (idbTarget) {
-            customTargets = URL.createObjectURL(idbTarget);
-            dedicatedSingle = true;
-          } else if (process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN) {
-            const r2WardUrl = `${getPublicAssetUrl(wardTargetKey)}?t=${nowTs}`;
-            try {
-              const res = await fetch(r2WardUrl, { method: 'HEAD' });
-              if (res.ok) {
-                customTargets = r2WardUrl;
-                dedicatedSingle = true;
-              }
-            } catch (e) {}
-          }
-        }
-
-        // B. Check master targets.mind in IndexedDB or R2 with cache-buster
-        if (!customTargets) {
-          const idbCombined = await getAssetBlob('targets.mind');
-          if (idbCombined) {
-            customTargets = URL.createObjectURL(idbCombined);
-          } else if (process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN) {
-            const r2MasterUrl = `${getPublicAssetUrl('targets.mind')}?t=${nowTs}`;
-            try {
-              const res = await fetch(r2MasterUrl, { method: 'HEAD' });
-              if (res.ok) {
-                customTargets = r2MasterUrl;
-              }
-            } catch (e) {}
-          }
-        }
-
-        // C. Fall back to bundled /targets.mind
-        if (!customTargets) {
-          customTargets = `/targets.mind?v=${nowTs}`;
-        }
+        // Master multi-target .mind binary hosted on Cloudflare R2 CDN
+        const remoteTargetUrl = `https://${r2Domain}/posters/targets.mind?t=${nowTs}`;
+        let resolvedTargetSrc = remoteTargetUrl;
 
         let resolvedWards: WardPoster[] | null = null;
 
-        // 1. Fetch live published configuration directly from Cloudflare R2 CDN with cache-buster
+        // Fetch live published configuration directly from Cloudflare R2 CDN with cache-buster
         try {
-          const r2WardsUrl = `${getPublicAssetUrl('wards.json')}?t=${nowTs}`;
-          const cdnRes = await fetch(r2WardsUrl);
+          const r2WardsUrl = `https://${r2Domain}/posters/wards.json?t=${nowTs}`;
+          const cdnRes = await fetch(r2WardsUrl, { cache: 'no-store' });
           if (cdnRes.ok) {
             const cdnData = await cdnRes.json();
             if (Array.isArray(cdnData) && cdnData.length > 0) {
@@ -138,15 +109,23 @@ export default function ARView({ onExit }: ARViewProps) {
           console.warn('Could not load wards.json from R2 CDN:', e);
         }
 
-        // 2. Fall back to local IndexedDB configuration
-        if (!resolvedWards || resolvedWards.length === 0) {
-          resolvedWards = await getWardsConfig();
-        }
-
-        // 3. Fall back to bundled /wards.json
+        // 2. Fall back to /api/wards live streaming endpoint
         if (!resolvedWards || resolvedWards.length === 0) {
           try {
-            const publicRes = await fetch(`/wards.json?v=${nowTs}`);
+            const apiRes = await fetch(`/api/wards?t=${nowTs}`, { cache: 'no-store' });
+            if (apiRes.ok) {
+              const apiData = await apiRes.json();
+              if (Array.isArray(apiData) && apiData.length > 0) {
+                resolvedWards = apiData;
+              }
+            }
+          } catch (e) {}
+        }
+
+        // 3. Fall back to bundled /wards.json if CDN fetch fails
+        if (!resolvedWards || resolvedWards.length === 0) {
+          try {
+            const publicRes = await fetch(`/wards.json?v=${nowTs}`, { cache: 'no-store' });
             if (publicRes.ok) {
               const publicData = await publicRes.json();
               if (Array.isArray(publicData) && publicData.length > 0) {
@@ -158,7 +137,7 @@ export default function ARView({ onExit }: ARViewProps) {
           }
         }
 
-        // Sanitize any stale blob: URLs to public CDN URLs so remote mobile visitors never break
+        // Sanitize any URLs to full public CDN URLs so remote mobile visitors never break
         if (resolvedWards && resolvedWards.length > 0) {
           resolvedWards = resolvedWards.map((w, wIdx) => {
             const wardNum = wIdx + 1;
@@ -179,17 +158,20 @@ export default function ARView({ onExit }: ARViewProps) {
         }
 
         if (active) {
-          setIsDedicatedSingleTarget(dedicatedSingle);
-          setTargetSrc(customTargets);
+          setTargetSrc(resolvedTargetSrc);
           if (resolvedWards && resolvedWards.length > 0) {
             setWards(resolvedWards);
-            if (isSingleWard && requestedWardNum && (requestedWardNum > resolvedWards.length || requestedWardNum < 1)) {
-              console.warn(`Requested ward ${requestedWardNum} is out of bounds (only ${resolvedWards.length} wards active). Falling back to all wards.`);
+            if (requestedWardNum && requestedWardNum >= 1 && requestedWardNum <= resolvedWards.length) {
+              setSelectedWardNum(requestedWardNum);
+            } else {
+              if (requestedWardNum) {
+                console.warn(`Requested ward ${requestedWardNum} is out of bounds (only ${resolvedWards.length} wards active). Falling back to all wards.`);
+              }
               setSelectedWardNum(null);
             }
           } else {
-            // Clean fallback: single default sample poster and video
             setWards([DEFAULT_WARD]);
+            setSelectedWardNum(null);
           }
           setIsReady(true);
         }
@@ -477,17 +459,11 @@ export default function ARView({ onExit }: ARViewProps) {
 
           {/* Dynamic MindAR Target Anchors for each Ward Poster */}
           {wards.map((ward, idx) => {
-            const isSingleWard = selectedWardNum !== null;
-            const targetWardIdx = selectedWardNum !== null ? selectedWardNum - 1 : idx;
-            if (isSingleWard && idx !== targetWardIdx) {
-              return null;
-            }
-
             return (
               <a-entity
                 key={`target-anchor-${ward.id || idx}`}
                 id={`target-anchor-${idx}`}
-                mindar-image-target={`targetIndex: ${isDedicatedSingleTarget ? 0 : idx}`}
+                mindar-image-target={`targetIndex: ${idx}`}
               >
                 {/* Ward Candidate Speech Video Plane attached to poster */}
                 <a-video

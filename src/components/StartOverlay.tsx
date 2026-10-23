@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface StartOverlayProps {
   onStart: () => void;
@@ -28,26 +28,53 @@ export default function StartOverlay({ onStart }: StartOverlayProps) {
   const [previewIdx, setPreviewIdx] = useState<number>(0);
   const [posters, setPosters] = useState<PosterItem[]>([DEFAULT_POSTER]);
 
-  // Load active posters dynamically from wards.json
-  useState(() => {
-    if (typeof window !== 'undefined') {
-      fetch(`/wards.json?t=${Date.now()}`)
-        .then((res) => (res.ok ? res.json() : []))
-        .then((data) => {
-          if (Array.isArray(data) && data.length > 0) {
-            const mapped: PosterItem[] = data.map((w: any, idx: number) => ({
-              ward: w.wardNumber || `Ward ${idx + 1}`,
-              name: w.wardName || `Ward ${idx + 1} Campaign Poster`,
-              url: w.markerUrl || '/sample_marker.png',
-              fallback: '/sample_marker.png',
-              candidate: w.candidateName || 'Official Candidate',
-            }));
-            setPosters(mapped);
+  // Load active posters dynamically from Cloudflare R2 CDN with local fallback
+  useEffect(() => {
+    let active = true;
+    const r2Domain = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN || 'pub-2a862321b71a474f8dfa575716c82ab4.r2.dev';
+    const r2Url = `https://${r2Domain}/posters/wards.json?t=${Date.now()}`;
+
+    async function loadPosters() {
+      try {
+        let data: any[] | null = null;
+        try {
+          const r2Res = await fetch(r2Url, { cache: 'no-store' });
+          if (r2Res.ok) {
+            const json = await r2Res.json();
+            if (Array.isArray(json) && json.length > 0) {
+              data = json;
+            }
           }
-        })
-        .catch(() => {});
+        } catch (e) {}
+
+        if (!data || data.length === 0) {
+          const localRes = await fetch(`/wards.json?t=${Date.now()}`, { cache: 'no-store' });
+          if (localRes.ok) {
+            const json = await localRes.json();
+            if (Array.isArray(json) && json.length > 0) {
+              data = json;
+            }
+          }
+        }
+
+        if (active && data && data.length > 0) {
+          const mapped: PosterItem[] = data.map((w: any, idx: number) => ({
+            ward: w.wardNumber || `Ward ${idx + 1}`,
+            name: w.wardName || `Ward ${idx + 1} Campaign Poster`,
+            url: w.markerUrl || '/sample_marker.png',
+            fallback: '/sample_marker.png',
+            candidate: w.candidateName || 'Official Candidate',
+          }));
+          setPosters(mapped);
+        }
+      } catch (e) {}
     }
-  });
+
+    loadPosters();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleStart = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) {

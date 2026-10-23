@@ -141,7 +141,7 @@ export default function AdminPage() {
     // 1. First check live published configuration directly from Cloudflare R2 CDN
     try {
       const r2WardsUrl = `${getPublicAssetUrl('wards.json')}?t=${Date.now()}`;
-      const cdnRes = await fetch(r2WardsUrl);
+      const cdnRes = await fetch(r2WardsUrl, { cache: 'no-store' });
       if (cdnRes.ok) {
         const cdnData = await cdnRes.json();
         if (Array.isArray(cdnData) && cdnData.length > 0) {
@@ -157,33 +157,26 @@ export default function AdminPage() {
       }
     } catch (e) {}
 
-    // 2. Fall back to local IndexedDB configuration
-    const savedConfig = await getWardsConfig();
-    if (savedConfig && savedConfig.length > 0) {
-      setWards(
-        savedConfig.map((w) => ({
-          ...w,
-          imageFile: null,
-          videoFile: null
-        }))
-      );
-    } else {
-      const v = Date.now();
-      const marker = await getAssetUrl('sample_marker.png', `/sample_marker.png?v=${v}`);
-      const video = await getAssetUrl('campaign_speech.mp4', `/campaign_speech.mp4?v=${v}`);
-      setWards([
-        {
-          id: 'ward-1',
-          wardNumber: 'Ward 1 / వార్డు 1',
-          wardName: 'Official Alliance Poster',
-          candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
-          markerUrl: marker,
-          videoUrl: video,
-          imageFile: null,
-          videoFile: null
+    // 2. Fall back to bundled /wards.json
+    try {
+      const publicRes = await fetch(`/wards.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (publicRes.ok) {
+        const publicData = await publicRes.json();
+        if (Array.isArray(publicData) && publicData.length > 0) {
+          setWards(
+            publicData.map((w) => ({
+              ...w,
+              imageFile: null,
+              videoFile: null
+            }))
+          );
+          return;
         }
-      ]);
-    }
+      }
+    } catch (e) {}
+
+    // 3. Clean fallback to default ward
+    setWards(DEFAULT_WARDS);
   };
 
   const loadAnalytics = () => {
