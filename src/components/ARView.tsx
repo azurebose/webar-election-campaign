@@ -16,8 +16,8 @@ const DEFAULT_WARD: WardPoster = {
   wardNumber: 'Ward 1 / వార్డు 1',
   wardName: 'Official Alliance Poster',
   candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
-  markerUrl: getPublicAssetUrl('ward_1_poster.png'),
-  videoUrl: getPublicAssetUrl('ward_1_speech.mp4')
+  markerUrl: '/posters/ward_1_poster.png',
+  videoUrl: '/posters/ward_1_speech.mp4'
 };
 
 export default function ARView({ onExit }: ARViewProps) {
@@ -137,17 +137,17 @@ export default function ARView({ onExit }: ARViewProps) {
           }
         }
 
-        // Sanitize any URLs to full public CDN URLs so remote mobile visitors never break
+        // Sanitize any URLs to same-origin /posters/ paths to prevent mobile WebGL cross-origin texture tainting
         if (resolvedWards && resolvedWards.length > 0) {
           resolvedWards = resolvedWards.map((w, wIdx) => {
             const wardNum = wIdx + 1;
             let marker = w.markerUrl;
             let video = w.videoUrl;
             if (!marker || marker.startsWith('blob:')) {
-              marker = getPublicAssetUrl(`ward_${wardNum}_poster.png`);
+              marker = `/posters/ward_${wardNum}_poster.png`;
             }
-            if (!video || video.startsWith('blob:')) {
-              video = getPublicAssetUrl(`ward_${wardNum}_speech.mp4`);
+            if (!video || video.startsWith('blob:') || video.includes('pub-2a862321b71a474f8dfa575716c82ab4.r2.dev')) {
+              video = `/posters/ward_${wardNum}_speech.mp4`;
             }
             return {
               ...w,
@@ -195,6 +195,34 @@ export default function ARView({ onExit }: ARViewProps) {
     const storedEmail = localStorage.getItem('auth_email');
     setIsAuthenticated(!!storedEmail);
   }, []);
+
+  // 4. Mobile browser media unlock on any direct touch/pointer event
+  useEffect(() => {
+    const unlockMedia = () => {
+      wards.forEach((_, idx) => {
+        const vid = document.getElementById(`campaign-speech-video-${idx}`) as HTMLVideoElement | null;
+        if (vid) {
+          vid.muted = true;
+          vid.playsInline = true;
+          const p = vid.play();
+          if (p !== undefined) {
+            p.then(() => {
+              if (activeWardIndex !== idx) {
+                vid.pause();
+                vid.currentTime = 0;
+              }
+            }).catch(() => {});
+          }
+        }
+      });
+    };
+    window.addEventListener('touchstart', unlockMedia, { passive: true, once: true });
+    window.addEventListener('pointerdown', unlockMedia, { passive: true, once: true });
+    return () => {
+      window.removeEventListener('touchstart', unlockMedia);
+      window.removeEventListener('pointerdown', unlockMedia);
+    };
+  }, [wards, activeWardIndex]);
 
   const handlePledge = useCallback(async () => {
     if (isPledged) return;
@@ -312,7 +340,7 @@ export default function ARView({ onExit }: ARViewProps) {
   useEffect(() => {
     if (!isReady || !containerRef.current) return;
 
-    // Attach A-Frame custom component if available
+    // Attach A-Frame custom components if available
     const AFRAME = (window as any).AFRAME;
     if (AFRAME && !AFRAME.components['pledge-handler']) {
       AFRAME.registerComponent('pledge-handler', {
@@ -320,6 +348,20 @@ export default function ARView({ onExit }: ARViewProps) {
           this.el.addEventListener('click', () => {
             handlePledge();
           });
+        }
+      });
+    }
+
+    if (AFRAME && !AFRAME.components['video-texture-updater']) {
+      AFRAME.registerComponent('video-texture-updater', {
+        init: function () {
+          this.mesh = this.el.getObject3D('mesh');
+        },
+        tick: function () {
+          const mesh = this.mesh || this.el.getObject3D('mesh');
+          if (mesh && mesh.material && mesh.material.map) {
+            mesh.material.map.needsUpdate = true;
+          }
         }
       });
     }
@@ -433,18 +475,18 @@ export default function ARView({ onExit }: ARViewProps) {
           embedded
           style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
         >
-          {/* Candidate Speech Videos for all Wards (preload="none" prevents network congestion) */}
-          <a-assets timeout="3000">
+          {/* Candidate Speech Videos for all Wards */}
+          <a-assets timeout="10000">
             {wards.map((ward, idx) => (
               <video
                 key={`vid-asset-${ward.id || idx}`}
                 id={`campaign-speech-video-${idx}`}
                 src={ward.videoUrl}
-                preload="none"
+                preload="auto"
                 playsInline
                 webkit-playsinline="true"
                 loop
-                muted={isMuted}
+                muted={true}
                 crossOrigin="anonymous"
               />
             ))}
@@ -468,10 +510,11 @@ export default function ARView({ onExit }: ARViewProps) {
                 {/* Ward Candidate Speech Video Plane attached to poster */}
                 <a-video
                   src={`#campaign-speech-video-${idx}`}
-                  position="0 0.1 0"
+                  position="0 0.08 0.02"
                   width="1"
                   height="0.65"
                   rotation="0 0 0"
+                  video-texture-updater
                 />
 
                 {/* Interactive 3D 'Pledge to Vote' Button with Anti-Jitter Z-offset */}

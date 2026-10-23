@@ -66,6 +66,37 @@ export default {
         }
       }
 
+      // Stream any poster media (video speeches and images) directly with byte range & CORS support
+      if (url.pathname.startsWith('/posters/') || url.pathname.startsWith('/api/asset/')) {
+        const cleanKey = url.pathname.startsWith('/api/asset/')
+          ? 'posters/' + url.pathname.replace('/api/asset/', '')
+          : url.pathname.replace(/^\/+/, '');
+
+        const rangeHeader = request.headers.get('range');
+        const obj = await env.R2_BUCKET.get(cleanKey, {
+          range: rangeHeader ? request.headers : undefined,
+        });
+
+        if (obj) {
+          const headers = new Headers();
+          obj.writeHttpMetadata(headers);
+          headers.set('Access-Control-Allow-Origin', '*');
+          headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+          headers.set('Access-Control-Allow-Headers', '*');
+          headers.set('Accept-Ranges', 'bytes');
+          if (cleanKey.endsWith('.mp4')) {
+            headers.set('Content-Type', 'video/mp4');
+          } else if (cleanKey.endsWith('.png')) {
+            headers.set('Content-Type', 'image/png');
+          } else if (cleanKey.endsWith('.mind')) {
+            headers.set('Content-Type', 'application/octet-stream');
+          }
+          headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+          const status = obj.range ? 206 : 200;
+          return new Response(obj.body, { headers, status });
+        }
+      }
+
       if (url.pathname.startsWith('/ward_') && url.pathname.endsWith('_targets.mind')) {
         const rawName = url.pathname.replace(/^\/+/, '');
         const obj = (await env.R2_BUCKET.get(`posters/${rawName}`)) || (await env.R2_BUCKET.get('posters/targets.mind'));
