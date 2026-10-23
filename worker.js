@@ -68,32 +68,64 @@ export default {
 
       // Stream any poster media (video speeches and images) directly with byte range & CORS support
       if (url.pathname.startsWith('/posters/') || url.pathname.startsWith('/api/asset/')) {
-        const cleanKey = url.pathname.startsWith('/api/asset/')
-          ? 'posters/' + url.pathname.replace('/api/asset/', '')
-          : url.pathname.replace(/^\/+/, '');
+        try {
+          const cleanKey = url.pathname.startsWith('/api/asset/')
+            ? 'posters/' + url.pathname.replace('/api/asset/', '')
+            : url.pathname.replace(/^\/+/, '');
 
-        const rangeHeader = request.headers.get('range');
-        const obj = await env.R2_BUCKET.get(cleanKey, {
-          range: rangeHeader ? request.headers : undefined,
-        });
-
-        if (obj) {
-          const headers = new Headers();
-          obj.writeHttpMetadata(headers);
-          headers.set('Access-Control-Allow-Origin', '*');
-          headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-          headers.set('Access-Control-Allow-Headers', '*');
-          headers.set('Accept-Ranges', 'bytes');
-          if (cleanKey.endsWith('.mp4')) {
-            headers.set('Content-Type', 'video/mp4');
-          } else if (cleanKey.endsWith('.png')) {
-            headers.set('Content-Type', 'image/png');
-          } else if (cleanKey.endsWith('.mind')) {
-            headers.set('Content-Type', 'application/octet-stream');
+          const rangeHeader = request.headers.get('range');
+          let parsedRange = undefined;
+          if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+            const parts = rangeHeader.slice(6).split('-');
+            if (parts[0] !== '' && parts[1] !== '') {
+              const start = parseInt(parts[0], 10);
+              const end = parseInt(parts[1], 10);
+              if (!isNaN(start) && !isNaN(end) && end >= start) {
+                parsedRange = { offset: start, length: end - start + 1 };
+              }
+            } else if (parts[0] !== '') {
+              const start = parseInt(parts[0], 10);
+              if (!isNaN(start)) {
+                parsedRange = { offset: start };
+              }
+            } else if (parts[1] !== '') {
+              const suffix = parseInt(parts[1], 10);
+              if (!isNaN(suffix)) {
+                parsedRange = { suffix };
+              }
+            }
           }
-          headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-          const status = obj.range ? 206 : 200;
-          return new Response(obj.body, { headers, status });
+
+          let obj = null;
+          if (parsedRange) {
+            try {
+              obj = await env.R2_BUCKET.get(cleanKey, { range: parsedRange });
+            } catch (re) {}
+          }
+          if (!obj) {
+            obj = await env.R2_BUCKET.get(cleanKey);
+          }
+
+          if (obj) {
+            const headers = new Headers();
+            obj.writeHttpMetadata(headers);
+            headers.set('Access-Control-Allow-Origin', '*');
+            headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            headers.set('Access-Control-Allow-Headers', '*');
+            headers.set('Accept-Ranges', 'bytes');
+            if (cleanKey.endsWith('.mp4')) {
+              headers.set('Content-Type', 'video/mp4');
+            } else if (cleanKey.endsWith('.png')) {
+              headers.set('Content-Type', 'image/png');
+            } else if (cleanKey.endsWith('.mind')) {
+              headers.set('Content-Type', 'application/octet-stream');
+            }
+            headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+            const status = obj.range ? 206 : 200;
+            return new Response(obj.body, { headers, status });
+          }
+        } catch (mediaErr) {
+          console.error('Media stream error:', mediaErr);
         }
       }
 
