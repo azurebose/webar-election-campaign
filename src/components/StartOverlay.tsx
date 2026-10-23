@@ -6,27 +6,48 @@ interface StartOverlayProps {
   onStart: () => void;
 }
 
-const SAMPLE_POSTERS = [
-  {
-    ward: 'Ward 1 / వార్డు 1',
-    name: 'Official Alliance Poster / అధికారిక కూటమి పోస్టర్',
-    url: 'https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_1_poster.png',
-    fallback: '/sample_marker.png',
-    candidate: 'NDA Alliance / బోస్ కొడెల్లి'
-  },
-  {
-    ward: 'Ward 2 / వార్డు 2',
-    name: 'Campaign Symbols Emblem / ఎన్నికల గుర్తు',
-    url: 'https://pub-2a862321b71a474f8dfa575716c82ab4.r2.dev/posters/ward_2_poster.png',
-    fallback: '/campaign_bg.jpg',
-    candidate: 'Ward 2 Candidate'
-  }
-];
+interface PosterItem {
+  ward: string;
+  name: string;
+  url: string;
+  fallback: string;
+  candidate: string;
+}
+
+const DEFAULT_POSTER: PosterItem = {
+  ward: 'Official Campaign Poster / అధికారిక పోస్టర్',
+  name: 'Official Alliance Poster / అధికారిక కూటమి పోస్టర్',
+  url: '/sample_marker.png',
+  fallback: '/sample_marker.png',
+  candidate: 'NDA Alliance / బోస్ కొడెల్లి'
+};
 
 export default function StartOverlay({ onStart }: StartOverlayProps) {
   const [language, setLanguage] = useState<'bilingual' | 'te' | 'en'>('bilingual');
   const [showPosterPreview, setShowPosterPreview] = useState<boolean>(false);
   const [previewIdx, setPreviewIdx] = useState<number>(0);
+  const [posters, setPosters] = useState<PosterItem[]>([DEFAULT_POSTER]);
+
+  // Load active posters dynamically from wards.json
+  useState(() => {
+    if (typeof window !== 'undefined') {
+      fetch(`/wards.json?t=${Date.now()}`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            const mapped: PosterItem[] = data.map((w: any, idx: number) => ({
+              ward: w.wardNumber || `Ward ${idx + 1}`,
+              name: w.wardName || `Ward ${idx + 1} Campaign Poster`,
+              url: w.markerUrl || '/sample_marker.png',
+              fallback: '/sample_marker.png',
+              candidate: w.candidateName || 'Official Candidate',
+            }));
+            setPosters(mapped);
+          }
+        })
+        .catch(() => {});
+    }
+  });
 
   const handleStart = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) {
@@ -260,7 +281,7 @@ export default function StartOverlay({ onStart }: StartOverlayProps) {
 
             {/* Poster Tabs */}
             <div className="flex space-x-2">
-              {SAMPLE_POSTERS.map((poster, idx) => (
+              {posters.map((poster, idx) => (
                 <button
                   key={idx}
                   type="button"
@@ -277,17 +298,17 @@ export default function StartOverlay({ onStart }: StartOverlayProps) {
             </div>
 
             <div className="text-left bg-gray-950 p-2 rounded-xl border border-gray-800">
-              <p className="text-[11px] font-bold text-amber-300">{SAMPLE_POSTERS[previewIdx].name}</p>
-              <p className="text-[10px] text-gray-400">{SAMPLE_POSTERS[previewIdx].candidate}</p>
+              <p className="text-[11px] font-bold text-amber-300">{posters[previewIdx]?.name}</p>
+              <p className="text-[10px] text-gray-400">{posters[previewIdx]?.candidate}</p>
             </div>
 
             <div className="bg-black/60 rounded-xl p-2 flex items-center justify-center border border-amber-500/20">
               <img
-                src={SAMPLE_POSTERS[previewIdx].url}
+                src={posters[previewIdx]?.url}
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = SAMPLE_POSTERS[previewIdx].fallback;
+                  (e.target as HTMLImageElement).src = posters[previewIdx]?.fallback || '/sample_marker.png';
                 }}
-                alt={SAMPLE_POSTERS[previewIdx].ward}
+                alt={posters[previewIdx]?.ward}
                 className="max-h-48 object-contain rounded-lg"
               />
             </div>

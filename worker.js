@@ -37,6 +37,50 @@ export default {
       );
     }
 
+    // 2.5 Live R2 dynamic asset streaming for wards.json & targets.mind
+    if (env.R2_BUCKET) {
+      if (url.pathname === '/wards.json' || url.pathname === '/posters/wards.json') {
+        const obj = await env.R2_BUCKET.get('posters/wards.json');
+        if (obj) {
+          const body = await obj.text();
+          return new Response(body, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+            },
+          });
+        }
+      }
+
+      if (url.pathname === '/targets.mind' || url.pathname === '/posters/targets.mind') {
+        const obj = await env.R2_BUCKET.get('posters/targets.mind');
+        if (obj) {
+          return new Response(obj.body, {
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+            },
+          });
+        }
+      }
+
+      if (url.pathname.startsWith('/ward_') && url.pathname.endsWith('_targets.mind')) {
+        const rawName = url.pathname.replace(/^\/+/, '');
+        const obj = (await env.R2_BUCKET.get(`posters/${rawName}`)) || (await env.R2_BUCKET.get('posters/targets.mind'));
+        if (obj) {
+          return new Response(obj.body, {
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+            },
+          });
+        }
+      }
+    }
+
     // 3. Admin Upload URL Generator & Direct Cloudflare R2 Upload
     if (url.pathname === '/api/admin/upload-url' && request.method === 'POST') {
       try {

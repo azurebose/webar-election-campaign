@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import QuotaModal from '@/components/QuotaModal';
 import WardPosterModal from '@/components/WardPosterModal';
-import { getAssetUrl, getWardsConfig, WardPoster } from '@/utils/idbStorage';
+import { getAssetUrl, getAssetBlob, getWardsConfig, WardPoster } from '@/utils/idbStorage';
 import { getPublicAssetUrl } from '@/lib/r2';
 import { verifyAndIncrementScan, getVisitorFingerprint, recordVotePledge } from '@/lib/quota';
 
@@ -36,9 +36,8 @@ export default function ARView({ onExit }: ARViewProps) {
   const [isWardModalOpen, setIsWardModalOpen] = useState<boolean>(false);
   const [targetVersion] = useState<number>(Date.now());
   const [selectedWardNum, setSelectedWardNum] = useState<number | null>(null);
-  const [targetSrc, setTargetSrc] = useState<string>(
-    process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN ? getPublicAssetUrl('targets.mind') : `/targets.mind?v=${Date.now()}`
-  );
+  const [isDedicatedSingleTarget, setIsDedicatedSingleTarget] = useState<boolean>(false);
+  const [targetSrc, setTargetSrc] = useState<string>(`/targets.mind?v=${Date.now()}`);
 
 
   // 1. Install WebRTC camera fallback polyfill for laptops/desktops/front webcams
@@ -70,6 +69,7 @@ export default function ARView({ onExit }: ARViewProps) {
     let active = true;
     async function loadCampaignAssets() {
       try {
+        const nowTs = Date.now();
         const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
         const requestedWardStr = urlParams?.get('ward');
         const requestedWardNum = requestedWardStr ? parseInt(requestedWardStr, 10) : null;
@@ -79,27 +79,55 @@ export default function ARView({ onExit }: ARViewProps) {
         }
 
         let customTargets = '';
+        let dedicatedSingle = false;
+
+        // A. If single ward requested, check for dedicated single-ward target
         if (isSingleWard) {
           const wardTargetKey = `ward_${requestedWardNum}_targets.mind`;
-          const defaultWardMindUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
-            ? getPublicAssetUrl(wardTargetKey)
-            : `/${wardTargetKey}?v=${targetVersion}`;
-          customTargets = await getAssetUrl(`ward_target_ward-${requestedWardNum}.mind`, defaultWardMindUrl);
+          // Check IndexedDB
+          const idbTarget = await getAssetBlob(`ward_target_ward-${requestedWardNum}.mind`);
+          if (idbTarget) {
+            customTargets = URL.createObjectURL(idbTarget);
+            dedicatedSingle = true;
+          } else if (process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN) {
+            const r2WardUrl = `${getPublicAssetUrl(wardTargetKey)}?t=${nowTs}`;
+            try {
+              const res = await fetch(r2WardUrl, { method: 'HEAD' });
+              if (res.ok) {
+                customTargets = r2WardUrl;
+                dedicatedSingle = true;
+              }
+            } catch (e) {}
+          }
         }
 
+        // B. Check master targets.mind in IndexedDB or R2 with cache-buster
         if (!customTargets) {
-          const defaultMindUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
-            ? getPublicAssetUrl('targets.mind')
-            : `/targets.mind?v=${targetVersion}`;
-          customTargets = await getAssetUrl('targets.mind', defaultMindUrl);
+          const idbCombined = await getAssetBlob('targets.mind');
+          if (idbCombined) {
+            customTargets = URL.createObjectURL(idbCombined);
+          } else if (process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN) {
+            const r2MasterUrl = `${getPublicAssetUrl('targets.mind')}?t=${nowTs}`;
+            try {
+              const res = await fetch(r2MasterUrl, { method: 'HEAD' });
+              if (res.ok) {
+                customTargets = r2MasterUrl;
+              }
+            } catch (e) {}
+          }
+        }
+
+        // C. Fall back to bundled /targets.mind
+        if (!customTargets) {
+          customTargets = `/targets.mind?v=${nowTs}`;
         }
 
         let resolvedWards: WardPoster[] | null = null;
 
-        // 1. Fetch live published configuration directly from Cloudflare R2 CDN
+        // 1. Fetch live published configuration directly from Cloudflare R2 CDN with cache-buster
         try {
-          const r2WardsUrl = getPublicAssetUrl('wards.json');
-          const cdnRes = await fetch(`${r2WardsUrl}?v=${targetVersion}`);
+          const r2WardsUrl = `${getPublicAssetUrl('wards.json')}?t=${nowTs}`;
+          const cdnRes = await fetch(r2WardsUrl);
           if (cdnRes.ok) {
             const cdnData = await cdnRes.json();
             if (Array.isArray(cdnData) && cdnData.length > 0) {
@@ -118,7 +146,7 @@ export default function ARView({ onExit }: ARViewProps) {
         // 3. Fall back to bundled /wards.json
         if (!resolvedWards || resolvedWards.length === 0) {
           try {
-            const publicRes = await fetch(`/wards.json?v=${targetVersion}`);
+            const publicRes = await fetch(`/wards.json?v=${nowTs}`);
             if (publicRes.ok) {
               const publicData = await publicRes.json();
               if (Array.isArray(publicData) && publicData.length > 0) {
@@ -151,30 +179,17 @@ export default function ARView({ onExit }: ARViewProps) {
         }
 
         if (active) {
+          setIsDedicatedSingleTarget(dedicatedSingle);
           setTargetSrc(customTargets);
           if (resolvedWards && resolvedWards.length > 0) {
             setWards(resolvedWards);
+            if (isSingleWard && requestedWardNum && (requestedWardNum > resolvedWards.length || requestedWardNum < 1)) {
+              console.warn(`Requested ward ${requestedWardNum} is out of bounds (only ${resolvedWards.length} wards active). Falling back to all wards.`);
+              setSelectedWardNum(null);
+            }
           } else {
-            // Fall back to default ward with any cached singular assets or R2 CDN assets
-            const defaultMarkerUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
-              ? getPublicAssetUrl('sample_marker.png')
-              : `/sample_marker.png?v=${targetVersion}`;
-            const defaultVideoUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN
-              ? getPublicAssetUrl('campaign_speech.mp4')
-              : `/campaign_speech.mp4?v=${targetVersion}`;
-
-            const marker = await getAssetUrl('sample_marker.png', defaultMarkerUrl);
-            const speech = await getAssetUrl('campaign_speech.mp4', defaultVideoUrl);
-            setWards([
-              {
-                id: 'ward-1',
-                wardNumber: 'Ward 1 / వార్డు 1',
-                wardName: 'Official Alliance Campaign Poster',
-                candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
-                markerUrl: marker,
-                videoUrl: speech
-              }
-            ]);
+            // Clean fallback: single default sample poster and video
+            setWards([DEFAULT_WARD]);
           }
           setIsReady(true);
         }
@@ -427,7 +442,7 @@ export default function ARView({ onExit }: ARViewProps) {
       {/* MindAR A-Frame WebAR Scene Viewport */}
       <div ref={containerRef} className="w-full h-full absolute inset-0 z-0 bg-transparent">
         <a-scene
-          key={targetVersion}
+          key={`${targetSrc}-${targetVersion}`}
           mindar-image={`imageTargetSrc: ${targetSrc}; filterMinCF: 0.0001; filterBeta: 0.001; autoStart: true; uiLoading: no; uiScanning: no;`}
           color-space="sRGB"
           renderer="colorManagement: true, physicallyCorrectLights; alpha: true"
@@ -472,7 +487,7 @@ export default function ARView({ onExit }: ARViewProps) {
               <a-entity
                 key={`target-anchor-${ward.id || idx}`}
                 id={`target-anchor-${idx}`}
-                mindar-image-target={`targetIndex: ${isSingleWard ? 0 : idx}`}
+                mindar-image-target={`targetIndex: ${isDedicatedSingleTarget ? 0 : idx}`}
               >
                 {/* Ward Candidate Speech Video Plane attached to poster */}
                 <a-video
@@ -595,7 +610,7 @@ export default function ARView({ onExit }: ARViewProps) {
               onClick={() => setIsWardModalOpen(true)}
               className="bg-black/80 hover:bg-black/95 backdrop-blur-md px-4 py-2 rounded-full border border-amber-400/40 text-[11px] font-bold text-amber-200 hover:text-white flex items-center space-x-1.5 transition-all shadow-md active:scale-95"
             >
-              <span>🖼️ View 7 Ward Posters / పోస్టర్లు</span>
+              <span>🖼️ View {wards.length} Ward {wards.length === 1 ? 'Poster' : 'Posters'} / పోస్టర్లు</span>
             </button>
           </div>
         </div>

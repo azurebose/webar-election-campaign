@@ -138,6 +138,26 @@ export default function AdminPage() {
   };
 
   const loadInitialWards = async () => {
+    // 1. First check live published configuration directly from Cloudflare R2 CDN
+    try {
+      const r2WardsUrl = `${getPublicAssetUrl('wards.json')}?t=${Date.now()}`;
+      const cdnRes = await fetch(r2WardsUrl);
+      if (cdnRes.ok) {
+        const cdnData = await cdnRes.json();
+        if (Array.isArray(cdnData) && cdnData.length > 0) {
+          setWards(
+            cdnData.map((w) => ({
+              ...w,
+              imageFile: null,
+              videoFile: null
+            }))
+          );
+          return;
+        }
+      }
+    } catch (e) {}
+
+    // 2. Fall back to local IndexedDB configuration
     const savedConfig = await getWardsConfig();
     if (savedConfig && savedConfig.length > 0) {
       setWards(
@@ -218,7 +238,7 @@ export default function AdminPage() {
     setSelectedPreviewIdx(wards.length);
   };
 
-  const handleRemoveWard = (idx: number) => {
+  const handleRemoveWard = async (idx: number) => {
     if (wards.length <= 1) {
       setErrorMessage('You must have at least one campaign ward poster.');
       return;
@@ -226,6 +246,74 @@ export default function AdminPage() {
     const updated = wards.filter((_, i) => i !== idx);
     setWards(updated);
     setSelectedPreviewIdx(Math.max(0, idx - 1));
+    await saveWardsConfig(
+      updated.map((w, wIdx) => ({
+        id: w.id || `ward-${wIdx + 1}`,
+        wardNumber: w.wardNumber,
+        wardName: w.wardName,
+        candidateName: w.candidateName,
+        markerUrl: w.markerUrl,
+        videoUrl: w.videoUrl,
+      }))
+    );
+  };
+
+  const handleDeleteAllPosters = async () => {
+    if (
+      !confirm(
+        '⚠️ ARE YOU SURE YOU WANT TO DELETE ALL POSTERS?\n\nThis will permanently delete all 7 campaign posters and targets from:\n1. Cloudflare R2 bucket (CDN)\n2. Local browser storage (IndexedDB)\n\nOther devices will no longer see old posters and you will have a 100% clean slate.'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setIsUploadingToR2(true);
+      setR2StatusMessage('Wiping all poster assets from Cloudflare R2 bucket...');
+
+      const emailToUse = adminEmail.trim() || 'admin@electioncampaign.org';
+      try {
+        await fetch('/api/admin/clear-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailToUse }),
+        });
+      } catch (e) {
+        console.warn('API clear error:', e);
+      }
+
+      await clearAllCustomAssets();
+
+      const v = Date.now();
+      const cleanDefault: AdminWardState[] = [
+        {
+          id: 'ward-1',
+          wardNumber: 'Ward 1 / వార్డు 1',
+          wardName: 'Official Alliance Poster',
+          candidateName: 'NDA Alliance / బోస్ కొడెల్లి',
+          markerUrl: `/sample_marker.png?v=${v}`,
+          videoUrl: `/campaign_speech.mp4?v=${v}`,
+          imageFile: null,
+          videoFile: null
+        }
+      ];
+
+      setWards(cleanDefault);
+      setSelectedPreviewIdx(0);
+      setCompiledBlob(null);
+      setWardCompileStatus({});
+      setR2UploadedAssets([]);
+      setIsUploadingToR2(false);
+
+      setSuccessMessage(
+        '✓ All 7 posters have been successfully deleted from Cloudflare R2 and browser storage! Clean slate ready.'
+      );
+      setTimeout(() => setSuccessMessage(null), 8000);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(`Failed to delete all posters: ${err.message}`);
+      setIsUploadingToR2(false);
+    }
   };
 
   const handleUpdateWardField = (idx: number, field: keyof AdminWardState, value: any) => {
@@ -625,6 +713,20 @@ export default function AdminPage() {
       setCompileProgress(96);
       await saveAssetBlob('targets.mind', mindBlob);
 
+      // Also compile and save individual ward targets for dedicated single-ward links (?ward=N)
+      for (let i = 0; i < readyWards.length; i++) {
+        try {
+          const singleCompiler = new CompilerClass();
+          await singleCompiler.compileImageTargets([loadedImages[i]], () => {});
+          const singleBuf = await singleCompiler.exportData();
+          const singleBlob = new Blob([singleBuf], { type: 'application/octet-stream' });
+          await saveAssetBlob(`ward_target_${readyWards[i].id}.mind`, singleBlob);
+          await saveAssetBlob(`ward_target_${i + 1}.mind`, singleBlob);
+        } catch (e) {
+          console.warn(`Single-target compile note for ${readyWards[i].wardNumber}:`, e);
+        }
+      }
+
       // Persist individual ward blobs and prepare serializable config
       const serializableWards: WardPoster[] = [];
       for (let i = 0; i < wards.length; i++) {
@@ -700,13 +802,30 @@ export default function AdminPage() {
       }
 
       setR2StatusMessage('Step 1/3: Uploading compiled targets.mind to Cloudflare R2...');
-      setR2UploadProgress(20);
+      setR2UploadProgress(15);
       const targetsPublicUrl = await uploadFileToR2('targets.mind', mindBlob, 'application/octet-stream');
       uploadedList.push({ name: 'targets.mind', url: targetsPublicUrl });
 
-      // 2. Upload each Ward Poster & Candidate Speech Video
       const wardsToUpload = currentWards || wards;
       const totalWards = wardsToUpload.length;
+
+      // Upload dedicated single-ward targets so ?ward=N links never 404
+      for (let i = 0; i < totalWards; i++) {
+        const wardNum = i + 1;
+        const w = wardsToUpload[i];
+        let singleTargetBlob = await getAssetBlob(`ward_target_${w.id}.mind`);
+        if (!singleTargetBlob) {
+          singleTargetBlob = await getAssetBlob(`ward_target_${wardNum}.mind`);
+        }
+        if (!singleTargetBlob && mindBlob) {
+          singleTargetBlob = mindBlob;
+        }
+        if (singleTargetBlob) {
+          await uploadFileToR2(`ward_${wardNum}_targets.mind`, singleTargetBlob, 'application/octet-stream', emailToUse);
+        }
+      }
+
+      // 2. Upload each Ward Poster & Candidate Speech Video
       const updatedWardsConfig = [];
 
       for (let i = 0; i < totalWards; i++) {
@@ -1120,6 +1239,18 @@ export default function AdminPage() {
                   className="bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center space-x-1 active:scale-95 flex-shrink-0"
                 >
                   <span>+ Add Ward</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteAllPosters}
+                  className="bg-red-950/70 hover:bg-red-900 border border-red-700/60 text-red-200 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold shadow-md transition-all flex items-center space-x-1 active:scale-95 flex-shrink-0"
+                  title="Permanently wipe all posters from Cloudflare R2 and browser storage"
+                >
+                  <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Delete All Posters</span>
                 </button>
               </div>
             </div>
